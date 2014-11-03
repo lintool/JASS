@@ -1,0 +1,2 @@
+main : main.c CIpostings.c CIvocab.c
+	g++ -O3 -o main main.c CIpostings.c CIvocab.c
