@@ -28,5 +28,6 @@ public:
 extern uint64_t CI_unique_terms;
 extern uint64_t CI_unique_documents;
 extern CI_vocab CI_dictionary[];
+extern const char *CI_doclist[];
 
 #endif

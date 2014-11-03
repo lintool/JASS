@@ -3,4 +3,4 @@ atire_to_compiled : atire_to_compiled.c
 
 
 clean:
-	rm atire_to_compiled main *.o CIvovab.h CIpostings.h CIpostings.c
+	rm atire_to_compiled main *.o CIvocab.c CIpostings.h CIpostings.c

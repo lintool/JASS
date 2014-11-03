@@ -20,14 +20,42 @@ int main(int argc, char *argv[])
 char *end_of_term;
 uint64_t line = 0;
 uint64_t cf, df, docid, impact, first_time = true, max_docid = 0;
-FILE *fp, *vocab_dot_c, *postings_dot_c, *postings_dot_h;
+FILE *fp, *vocab_dot_c, *postings_dot_c, *postings_dot_h, *doclist, *doclist_dot_c;
 
-if (argc != 2)
-	exit(printf("Usage: %s <infile.txt>\n", argv[0]));
+if (argc != 3)
+	exit(printf("Usage: %s <index.dump> <docid.aspt>\nGenerate index.dump with atire_dictionary > index.dump\nGeneratedocid.aspt with atire_doclist\n", argv[0]));
 
 if ((fp = fopen(argv[1], "rb")) == NULL)
 	exit(printf("Cannot open input file '%s'\n", argv[1]));
 
+if ((doclist = fopen(argv[2], "rb")) == NULL)
+	exit(printf("Cannot open input file '%s'\n", argv[2]));
+
+/*
+	do the doclist first as its fastest
+*/
+if ((doclist_dot_c = fopen("CIdoclist.c", "wb")) == NULL)
+	exit(printf("Cannot open CIdoclist.c output file"));
+
+fprintf(doclist_dot_c, "const char *CI_doclist[] =\n{\n");
+
+first_time = true;
+while (fgets(buffer, sizeof(buffer), doclist) != NULL)
+	{
+	if (first_time)
+		{
+		fprintf(doclist_dot_c, "\"%s\"", strtok(buffer, "\r\n"));
+		first_time = false;
+		}
+	else
+		fprintf(doclist_dot_c, ",\n\"%s\"", strtok(buffer, "\r\n"));
+	}
+
+fprintf(doclist_dot_c, "\n};\n");
+
+/*
+	Now do the postings lists
+*/
 if ((vocab_dot_c = fopen("CIvocab.c", "wb")) == NULL)
 	exit(printf("Cannot open CIvocab.c output file\n"));
 
@@ -45,6 +73,7 @@ if ((postings_dot_h = fopen("CIpostings.h", "wb")) == NULL)
 	exit(printf("Cannot open CIpostings.h output file\n"));
 fprintf(postings_dot_h, "#include <stdint.h>\n\n");
 
+first_time = true;
 while (fgets(buffer, sizeof(buffer), fp) != NULL)
 	{
 	line++;
