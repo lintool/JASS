@@ -33,17 +33,17 @@ if ((vocab_dot_c = fopen("CIvocab.c", "wb")) == NULL)
 
 fprintf(vocab_dot_c, "#include <stdint.h>\n");
 fprintf(vocab_dot_c, "#include \"CI.h\"\n");
-fprintf(vocab_dot_c, "#include \"CIpostings.h\"\n");
-fprintf(vocab_dot_c, "CI_vocab dictionary[] =\n{\n");
+fprintf(vocab_dot_c, "#include \"CIpostings.h\"\n\n");
+fprintf(vocab_dot_c, "CI_vocab CI_dictionary[] =\n{\n");
 
 if ((postings_dot_c = fopen("CIpostings.c", "wb")) == NULL)
 	exit(printf("Cannot open CIpostings.c output file\n"));
 
-fprintf(postings_dot_c, "#include <stdint.h>\n");
+fprintf(postings_dot_c, "#include <stdint.h>\n\n");
 
 if ((postings_dot_h = fopen("CIpostings.h", "wb")) == NULL)
 	exit(printf("Cannot open CIpostings.h output file\n"));
-fprintf(postings_dot_h, "#include <stdint.h>\n");
+fprintf(postings_dot_h, "#include <stdint.h>\n\n");
 
 while (fgets(buffer, sizeof(buffer), fp) != NULL)
 	{
@@ -61,16 +61,16 @@ while (fgets(buffer, sizeof(buffer), fp) != NULL)
 			df = atoll(end_of_term);
 			if (first_time)
 				{
-				fprintf(vocab_dot_c, "{\"%s\", T_%s, %lld, %lld}", buffer, buffer, cf, df);			// add to the vocab c file
+				fprintf(vocab_dot_c, "{\"%s\", CIt_%s, %lld, %lld}", buffer, buffer, cf, df);			// add to the vocab c file
 				first_time = false;
 				}
 			else
-				fprintf(vocab_dot_c, ",\n{\"%s\", T_%s, %lld, %lld}", buffer, buffer, cf, df);			// add to the vocab c file
+				fprintf(vocab_dot_c, ",\n{\"%s\", CIt_%s, %lld, %lld}", buffer, buffer, cf, df);			// add to the vocab c file
 
 			if ((end_of_term = strchr(end_of_term + 1, '<')) != NULL)
 				{
-				fprintf(postings_dot_h, "void T_%s(uint16_t *a);\n", buffer);
-				fprintf(postings_dot_c, "void T_%s(uint16_t *a)\n{\n", buffer);
+				fprintf(postings_dot_h, "void CIt_%s(uint16_t *a);\n", buffer);
+				fprintf(postings_dot_c, "void CIt_%s(uint16_t *a)\n{\n", buffer);
 				while (end_of_term != NULL)
 					if ((end_of_term = strchr(end_of_term, '<')) != NULL)
 						{
@@ -87,7 +87,7 @@ while (fgets(buffer, sizeof(buffer), fp) != NULL)
 		}
 	}
 
-fprintf(vocab_dot_c, "\n};\n");
+fprintf(vocab_dot_c, "\n};\n\n");
 fprintf(vocab_dot_c, "uint64_t CI_unique_terms = %llu;\n", line);
 fprintf(vocab_dot_c, "uint64_t CI_unique_documents = %llu;\n", max_docid + 1);			// +1 because we count from zero
 
