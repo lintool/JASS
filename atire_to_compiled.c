@@ -19,7 +19,7 @@ int main(int argc, char *argv[])
 {
 char *end_of_term;
 uint64_t line = 0;
-uint64_t cf, df, docid, impact, first_time = true;
+uint64_t cf, df, docid, impact, first_time = true, max_docid = 0;
 FILE *fp, *vocab_dot_c, *postings_dot_c, *postings_dot_h;
 
 if (argc != 2)
@@ -61,11 +61,11 @@ while (fgets(buffer, sizeof(buffer), fp) != NULL)
 			df = atoll(end_of_term);
 			if (first_time)
 				{
-				fprintf(vocab_dot_c, "{\"%s\", T_%s, %lld, %lld}\n", buffer, buffer, cf, df);			// add to the vocab c file
+				fprintf(vocab_dot_c, "{\"%s\", T_%s, %lld, %lld}", buffer, buffer, cf, df);			// add to the vocab c file
 				first_time = false;
 				}
 			else
-				fprintf(vocab_dot_c, ",{\"%s\", T_%s, %lld, %lld}\n", buffer, buffer, cf, df);			// add to the vocab c file
+				fprintf(vocab_dot_c, ",\n{\"%s\", T_%s, %lld, %lld}", buffer, buffer, cf, df);			// add to the vocab c file
 
 			if ((end_of_term = strchr(end_of_term + 1, '<')) != NULL)
 				{
@@ -75,6 +75,8 @@ while (fgets(buffer, sizeof(buffer), fp) != NULL)
 					if ((end_of_term = strchr(end_of_term, '<')) != NULL)
 						{
 						docid = atoll(end_of_term + 1);
+						if  (docid > max_docid)
+							max_docid = docid;
 						end_of_term = strchr(end_of_term + 1, ',');
 						impact = atoll(end_of_term + 1);
 						fprintf(postings_dot_c, "a[%lld] += %lld;\n", docid, impact);
@@ -85,7 +87,10 @@ while (fgets(buffer, sizeof(buffer), fp) != NULL)
 		}
 	}
 
-fprintf(vocab_dot_c, "};\n");
+fprintf(vocab_dot_c, "\n};\n");
+fprintf(vocab_dot_c, "uint64_t CI_unique_terms = %llu;\n", line);
+fprintf(vocab_dot_c, "uint64_t CI_unique_documents = %llu;\n", max_docid + 1);			// +1 because we count from zero
+
 fclose(vocab_dot_c);
 fclose(fp);
 fclose(postings_dot_c);
