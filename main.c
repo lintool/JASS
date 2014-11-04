@@ -90,6 +90,9 @@ return total / 1000; //because there are 1000 microseconds in a millisecond
 void trec_dump_results(uint32_t topic_id)
 {
 uint32_t current, id;
+uint32_t output_length;
+
+output_length = CI_results_list_length < 10 ? CI_results_list_length : 10;			// at most 10 results will be printed per query
 
 for (current = 0; current < CI_results_list_length; current++)
 	{
@@ -142,7 +145,8 @@ CI_accumulator_clean_flags = new uint8_t[CI_accumulators_height];
 */
 CI_accumulators = new uint16_t[accumulators_needed];
 CI_accumulator_pointers = new uint16_t * [accumulators_needed];
-CI_top_k = CI_unique_documents + 1;
+//CI_top_k = CI_unique_documents + 1;
+CI_top_k = 10;
 CI_heap = new ANT_heap<uint16_t *, add_rsv_compare>(*CI_accumulator_pointers, CI_top_k);
 
 /*
