@@ -125,8 +125,8 @@ uint64_t total_time_to_search = 0;
 uint64_t total_time_to_search_without_io = 0;
 uint32_t accumulators_needed;
 
-if (argc != 2)
-	exit(printf("Usage:%s <queryfile>\n", argv[0]));
+if (argc != 2 && argc != 3)
+	exit(printf("Usage:%s <queryfile> [<top-k-number>]\n", argv[0]));
 
 if ((fp = fopen(argv[1], "r")) == NULL)
 	exit(printf("Can't open query file:%s\n", argv[1]));
@@ -153,7 +153,7 @@ printf("Needed (W*H) :%u\n",  accumulators_needed);
 */
 CI_accumulators = new uint16_t[accumulators_needed];
 CI_accumulator_pointers = new uint16_t * [accumulators_needed];
-CI_top_k = CI_unique_documents + 1;
+CI_top_k = argc == 2 ? CI_unique_documents + 1 : atoll(argv[2]);
 CI_heap = new ANT_heap<uint16_t *, add_rsv_compare>(*CI_accumulator_pointers, CI_top_k);
 
 /*
