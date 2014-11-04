@@ -107,7 +107,8 @@ fprintf(vocab_dot_c, "CI_vocab CI_dictionary[] =\n{\n");
 if ((postings_dot_c = fopen("CIpostings.c", "wb")) == NULL)
 	exit(printf("Cannot open CIpostings.c output file\n"));
 
-fprintf(postings_dot_c, "#include <stdint.h>\n\n");
+fprintf(postings_dot_c, "#include <stdint.h>\n");
+fprintf(postings_dot_c, "#include \"CI.h\"\n\n");
 
 if ((postings_dot_h = fopen("CIpostings.h", "wb")) == NULL)
 	exit(printf("Cannot open CIpostings.h output file\n"));
@@ -152,8 +153,8 @@ while (fgets(buffer, sizeof(buffer), fp) != NULL)
 				{
 				if ((end_of_term = strchr(end_of_term + 1, '<')) != NULL)
 					{
-					fprintf(postings_dot_h, "void CIt_%s(uint16_t *a);\n", buffer);
-					fprintf(postings_dot_c, "void CIt_%s(uint16_t *a)\n{\n", buffer);
+					fprintf(postings_dot_h, "void CIt_%s(void);\n", buffer);
+					fprintf(postings_dot_c, "void CIt_%s(void)\n{\n", buffer);
 					while (end_of_term != NULL)
 						if ((end_of_term = strchr(end_of_term, '<')) != NULL)
 							{
@@ -162,7 +163,7 @@ while (fgets(buffer, sizeof(buffer), fp) != NULL)
 								max_docid = docid;
 							end_of_term = strchr(end_of_term + 1, ',');
 							impact = atoll(end_of_term + 1);
-							fprintf(postings_dot_c, "a[%lld] += %lld;\n", docid, impact);
+							fprintf(postings_dot_c, "add_rsv(%lld, %lld);\n", docid, impact);
 							}
 					fprintf(postings_dot_c, "}\n\n");
 					}
@@ -172,8 +173,8 @@ while (fgets(buffer, sizeof(buffer), fp) != NULL)
 	}
 
 fprintf(vocab_dot_c, "\n};\n\n");
-fprintf(vocab_dot_c, "uint64_t CI_unique_terms = %llu;\n", line);
-fprintf(vocab_dot_c, "uint64_t CI_unique_documents = %llu;\n", max_docid + 1);			// +1 because we count from zero
+fprintf(vocab_dot_c, "uint32_t CI_unique_terms = %llu;\n", line);
+fprintf(vocab_dot_c, "uint32_t CI_unique_documents = %llu;\n", max_docid + 1);			// +1 because we count from zero
 
 fclose(vocab_dot_c);
 fclose(fp);

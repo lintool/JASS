@@ -1,2 +1,3 @@
-main : main.c CIpostings.c CIvocab.c CIdoclist.c
-	g++ -O3 -o main main.c CIpostings.c CIvocab.c CIdoclist.c
+main : main.c CIpostings.c CIvocab.c CIdoclist.c CI.c CI.h CIpostings.h heap.h
+	g++ -O3 -o main main.c CIpostings.c CIvocab.c CIdoclist.c CI.c
+
