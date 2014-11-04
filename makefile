@@ -1,6 +1,6 @@
 atire_to_compiled : atire_to_compiled.c
-	g++ -O3 atire_to_compiled.c -o atire_to_compiled
+	g++ -g atire_to_compiled.c -o atire_to_compiled
 
 
 clean:
-	rm atire_to_compiled main *.o CIvocab.c CIpostings.h CIpostings.c
+	rm atire_to_compiled main *.o CIvocab.c CIpostings.h CIpostings.c CIdoclist.c

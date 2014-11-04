@@ -166,3 +166,4 @@ printf("Total time including I/O  : %lluus (%lluticks)\n", total_time_to_search 
 
 return 0;
 }
+

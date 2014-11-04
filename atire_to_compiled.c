@@ -11,19 +11,59 @@
 
 static char buffer[1024 * 1024 * 1024];
 
+char *termlist[1024 * 1024];
+uint32_t termlist_length = 0;
+
+/*
+	STRING_COMPARE()
+	----------------
+*/
+int string_compare(const void *a, const void *b)
+{
+char **one = (char **)a;
+char **two = (char **)b;
+
+return strcmp(*one, *two);
+}
+
+/*
+	LOAD_TOPIC_FILE()
+	-----------------
+*/
+void load_topic_file(char *filename)
+{
+static const char *SEPERATORS = " \t\n\r";
+FILE *fp;
+char *term;
+
+if ((fp = fopen(filename, "rb")) == NULL)
+	exit(printf("Cannot open ATIRE topic file '%s'\n", filename));
+
+while (fgets(buffer, sizeof(buffer), fp) != NULL)
+	if ((term = strtok(buffer, SEPERATORS)) != NULL)			// discard the first token as its the topic ID
+		for (term = strtok(NULL, SEPERATORS); term != NULL; term = strtok(NULL, SEPERATORS))
+			termlist[termlist_length++] = strdup(term);
+
+qsort(termlist, termlist_length, sizeof(*termlist), string_compare);
+}
+
 /*
 	MAIN()
 	------
 */
 int main(int argc, char *argv[])
 {
-char *end_of_term;
+char *end_of_term, *buffer_address = (char *)buffer;
 uint64_t line = 0;
 uint64_t cf, df, docid, impact, first_time = true, max_docid = 0;
 FILE *fp, *vocab_dot_c, *postings_dot_c, *postings_dot_h, *doclist, *doclist_dot_c;
+uint32_t include_postings;
 
-if (argc != 3)
-	exit(printf("Usage: %s <index.dump> <docid.aspt>\nGenerate index.dump with atire_dictionary > index.dump\nGeneratedocid.aspt with atire_doclist\n", argv[0]));
+if (argc != 3 && argc != 4)
+	exit(printf("Usage: %s <index.dump> <docid.aspt> [<topicfile>]\nGenerate index.dump with atire_dictionary > index.dump\nGeneratedocid.aspt with atire_doclist\nGenerate <topicfile> with trec2query <trectopicfile> t\n", argv[0]));
+
+if (argc == 4)
+	load_topic_file(argv[3]);
 
 if ((fp = fopen(argv[1], "rb")) == NULL)
 	exit(printf("Cannot open input file '%s'\n", argv[1]));
@@ -88,29 +128,44 @@ while (fgets(buffer, sizeof(buffer), fp) != NULL)
 		if ((end_of_term = strchr(end_of_term, ' ')) != NULL)
 			{
 			df = atoll(end_of_term);
+
+			if ((termlist_length == 0) || (bsearch(&buffer_address, termlist, termlist_length, sizeof(*termlist), string_compare) != NULL))										// only add to the output file if the term is in the term list (or we have no term list)
+				include_postings = true;
+			else
+				include_postings = false;
+
 			if (first_time)
 				{
-				fprintf(vocab_dot_c, "{\"%s\", CIt_%s, %lld, %lld}", buffer, buffer, cf, df);			// add to the vocab c file
+				if (include_postings)
+					fprintf(vocab_dot_c, "{\"%s\", CIt_%s, %lld, %lld}", buffer, buffer, cf, df);			// add to the vocab c file
+				else
+					fprintf(vocab_dot_c, "{\"%s\", 0, %lld, %lld}", buffer, cf, df);			// add to the vocab c file
 				first_time = false;
 				}
 			else
-				fprintf(vocab_dot_c, ",\n{\"%s\", CIt_%s, %lld, %lld}", buffer, buffer, cf, df);			// add to the vocab c file
+				if (include_postings)
+					fprintf(vocab_dot_c, ",\n{\"%s\", CIt_%s, %lld, %lld}", buffer, buffer, cf, df);			// add to the vocab c file
+				else
+					fprintf(vocab_dot_c, ",\n{\"%s\", 0, %lld, %lld}", buffer, cf, df);			// add to the vocab c file
 
-			if ((end_of_term = strchr(end_of_term + 1, '<')) != NULL)
+			if (include_postings)
 				{
-				fprintf(postings_dot_h, "void CIt_%s(uint16_t *a);\n", buffer);
-				fprintf(postings_dot_c, "void CIt_%s(uint16_t *a)\n{\n", buffer);
-				while (end_of_term != NULL)
-					if ((end_of_term = strchr(end_of_term, '<')) != NULL)
-						{
-						docid = atoll(end_of_term + 1);
-						if  (docid > max_docid)
-							max_docid = docid;
-						end_of_term = strchr(end_of_term + 1, ',');
-						impact = atoll(end_of_term + 1);
-						fprintf(postings_dot_c, "a[%lld] += %lld;\n", docid, impact);
-						}
-				fprintf(postings_dot_c, "}\n\n");
+				if ((end_of_term = strchr(end_of_term + 1, '<')) != NULL)
+					{
+					fprintf(postings_dot_h, "void CIt_%s(uint16_t *a);\n", buffer);
+					fprintf(postings_dot_c, "void CIt_%s(uint16_t *a)\n{\n", buffer);
+					while (end_of_term != NULL)
+						if ((end_of_term = strchr(end_of_term, '<')) != NULL)
+							{
+							docid = atoll(end_of_term + 1);
+							if  (docid > max_docid)
+								max_docid = docid;
+							end_of_term = strchr(end_of_term + 1, ',');
+							impact = atoll(end_of_term + 1);
+							fprintf(postings_dot_c, "a[%lld] += %lld;\n", docid, impact);
+							}
+					fprintf(postings_dot_c, "}\n\n");
+					}
 				}
 			}
 		}
