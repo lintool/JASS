@@ -111,13 +111,14 @@ FILE *fp;
 char *term, *id;
 uint64_t query_id;
 CI_vocab *postings_list;
-uint64_t timer, full_query_timer, us_convert;
+uint64_t timer, full_query_timer, full_query_without_io_timer, us_convert;
 uint64_t stats_accumulator_time = 0;
 uint64_t stats_vocab_time = 0;
 uint64_t stats_postings_time = 0;
 uint64_t stats_sort_time = 0;
 uint64_t total_number_of_topics = 0;
 uint64_t total_time_to_search = 0;
+uint64_t total_time_to_search_without_io = 0;
 uint32_t accumulators_needed;
 
 if (argc != 2)
@@ -150,6 +151,7 @@ CI_heap = new ANT_heap<uint16_t *, add_rsv_compare>(*CI_accumulator_pointers, CI
 full_query_timer = timer_start();
 while (fgets(buffer, sizeof(buffer), fp) != NULL)
 	{
+	full_query_without_io_timer = timer_start();
 	if ((id = strtok(buffer, SEPERATORS)) == NULL)
 		continue;
 
@@ -166,7 +168,6 @@ while (fgets(buffer, sizeof(buffer), fp) != NULL)
 	*/
 	timer = timer_start();
 	memset(CI_accumulator_clean_flags, 0, CI_accumulators_height);
-//	memset(CI_accumulators,0x12, CI_accumulators_height);
 	stats_accumulator_time += timer_stop(timer);
 
 	/*
@@ -193,6 +194,13 @@ while (fgets(buffer, sizeof(buffer), fp) != NULL)
 	stats_sort_time += timer_stop(timer);
 
 	/*
+		At this point we know the number of hits (CI_results_list_length) and they can be decode out of the CI_accumulator_pointers array
+		where CI_accumulator_pointers[0] points into CI_accumulators[] and therefore CI_accumulator_pointers[0] - CI_accumulators is the docid
+		and *CI_accumulator_pointers[0] is the rsv.
+	*/
+	total_time_to_search_without_io += timer_stop(full_query_without_io_timer);
+
+	/*
 		Creat a TREC run file as output
 	*/
 	trec_dump_results(query_id);
@@ -206,6 +214,7 @@ printf("Accumulator initialisation: %lluus (%lluticks)\n", stats_accumulator_tim
 printf("Vocabulary lookup         : %lluus (%lluticks)\n", stats_vocab_time / total_number_of_topics / us_convert, stats_vocab_time / total_number_of_topics);
 printf("Process Postings          : %lluus (%lluticks)\n", stats_postings_time / total_number_of_topics / us_convert, stats_postings_time / total_number_of_topics);
 printf("Order the top-k           : %lluus (%lluticks)\n", stats_sort_time / total_number_of_topics / us_convert, stats_sort_time / total_number_of_topics);
+printf("Total time excluding I/O  : %lluus (%lluticks)\n", total_time_to_search_without_io / total_number_of_topics / us_convert, total_time_to_search_without_io / total_number_of_topics);
 printf("Total time including I/O  : %lluus (%lluticks)\n", total_time_to_search / total_number_of_topics / us_convert, total_time_to_search / total_number_of_topics);
 
 return 0;
