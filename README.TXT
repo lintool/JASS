@@ -1,5 +1,6 @@
 How to make it work:
 
+0. make
 1. Generate and ATIRE index
 2. atire_dictionary > index.dump
 3. atire_doclist
