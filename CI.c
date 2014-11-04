@@ -5,7 +5,6 @@
 
 #include "CI.h"
 
-
 /*
 	STRUCT COMPARE_REV
 	------------------
@@ -57,7 +56,6 @@ void swapfunc(uint16_t **a, uint16_t **b, long long n)
 while (n-- > 0)
 	swap(a++, b++);
 }
-
 
 /*
 	TOP_K_QSORT()

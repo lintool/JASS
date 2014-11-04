@@ -14,6 +14,10 @@ uint32_t CI_top_k;
 ANT_heap<uint16_t *, add_rsv_compare> *CI_heap;
 uint32_t CI_results_list_length;
 
+uint32_t CI_accumulators_shift;
+uint32_t CI_accumulators_width;
+uint32_t CI_accumulators_height;
+uint8_t *CI_accumulator_clean_flags;
 
 #ifndef _MSC_VER
 	/*
@@ -114,6 +118,7 @@ uint64_t stats_postings_time = 0;
 uint64_t stats_sort_time = 0;
 uint64_t total_number_of_topics = 0;
 uint64_t total_time_to_search = 0;
+uint32_t accumulators_needed;
 
 if (argc != 2)
 	exit(printf("Usage:%s <queryfile>\n", argv[0]));
@@ -121,11 +126,27 @@ if (argc != 2)
 if ((fp = fopen(argv[1], "r")) == NULL)
 	exit(printf("Can't open query file:%s\n", argv[1]));
 
-CI_accumulators = new uint16_t[CI_unique_documents];
-CI_accumulator_pointers = new uint16_t * [CI_unique_documents];
+
+/*
+	Compute the details of the accumulator table
+*/
+CI_accumulators_shift = log2(sqrt(CI_unique_documents));
+CI_accumulators_width = CI_unique_documents >> CI_accumulators_shift;
+CI_accumulators_height = (CI_unique_documents + CI_accumulators_width) / CI_accumulators_width;
+accumulators_needed = CI_accumulators_width * CI_accumulators_height;				// guaranteed to be larger than the highest accumulagtor that can be initialised
+CI_accumulator_clean_flags = new uint8_t[CI_accumulators_height];
+
+/*
+	Now prime the search engine
+*/
+CI_accumulators = new uint16_t[accumulators_needed];
+CI_accumulator_pointers = new uint16_t * [accumulators_needed];
 CI_top_k = CI_unique_documents + 1;
 CI_heap = new ANT_heap<uint16_t *, add_rsv_compare>(*CI_accumulator_pointers, CI_top_k);
 
+/*
+	Now start searching
+*/
 full_query_timer = timer_start();
 while (fgets(buffer, sizeof(buffer), fp) != NULL)
 	{
@@ -134,6 +155,7 @@ while (fgets(buffer, sizeof(buffer), fp) != NULL)
 
 	total_number_of_topics++;
 	CI_results_list_length = 0;
+
 	/*
 		get the TREC query_id
 	*/
@@ -143,7 +165,8 @@ while (fgets(buffer, sizeof(buffer), fp) != NULL)
 		Initialise the accumulators
 	*/
 	timer = timer_start();
-	memset(CI_accumulators, 0, CI_unique_documents * sizeof(*CI_accumulators));
+	memset(CI_accumulator_clean_flags, 0, CI_accumulators_height);
+//	memset(CI_accumulators,0x12, CI_accumulators_height);
 	stats_accumulator_time += timer_stop(timer);
 
 	/*

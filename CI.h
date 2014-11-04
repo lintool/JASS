@@ -26,14 +26,19 @@ public:
 	static int compare_string(const void *a, const void *b) { return strcmp((char *)a, ((CI_vocab*)b)->term);}
 };
 
-extern uint32_t CI_unique_terms;
-extern uint32_t CI_unique_documents;
-extern CI_vocab CI_dictionary[];
-extern const char *CI_doclist[];
-extern uint16_t *CI_accumulators;
-extern uint16_t **CI_accumulator_pointers;
-extern uint32_t CI_top_k;
-extern uint32_t CI_results_list_length;
+extern uint32_t CI_unique_terms;					// number of terms in the vocab
+extern CI_vocab CI_dictionary[];					// the vocab array
+extern uint32_t CI_unique_documents;			// number of documents in the collection
+extern const char *CI_doclist[];					// the list of document IDs (TREC document IDs)
+extern uint16_t *CI_accumulators;				// the accumulators
+extern uint16_t **CI_accumulator_pointers;	// an array of pointers into the accumulators (used to avoid computing docIDs)
+extern uint32_t CI_top_k;							// the number of results to find (top-k)
+extern uint32_t CI_results_list_length;		// the number of results we found (at most top-k)
+
+extern uint8_t *CI_accumulator_clean_flags;	// is the "row" of the accumulator table
+extern uint32_t CI_accumulators_shift;			// number of bits to shift (right) the docid by to get the CI_accumulator_clean_flags
+extern uint32_t CI_accumulators_width;			// the "width" of the accumulator table
+extern uint32_t CI_accumulators_height;		// the "height" of the accumulator table
 
 void top_k_qsort(uint16_t **a, long long n, long long top_k);
 
@@ -58,6 +63,15 @@ inline void add_rsv(uint32_t docid, uint16_t score)
 uint16_t old_value;
 uint16_t *which = CI_accumulators + docid;
 add_rsv_compare cmp;
+
+/*
+	Make sure the accumulator exists
+*/
+if (CI_accumulator_clean_flags[docid >> CI_accumulators_shift] == 0)
+	{
+	CI_accumulator_clean_flags[docid >> CI_accumulators_shift] = 1;
+	memset(CI_accumulators + (CI_accumulators_width * (docid >> CI_accumulators_shift)), 0, CI_accumulators_width);
+	}
 
 /*
 	CI_top_k search so we maintain a heap
