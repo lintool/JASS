@@ -93,6 +93,7 @@ uint32_t current, id;
 uint32_t output_length;
 
 output_length = CI_results_list_length < 10 ? CI_results_list_length : 10;			// at most 10 results will be printed per query
+output_length = CI_results_list_length;
 
 for (current = 0; current < CI_results_list_length; current++)
 	{
@@ -130,23 +131,29 @@ if (argc != 2)
 if ((fp = fopen(argv[1], "r")) == NULL)
 	exit(printf("Can't open query file:%s\n", argv[1]));
 
-
 /*
 	Compute the details of the accumulator table
 */
 CI_accumulators_shift = log2(sqrt(CI_unique_documents));
-CI_accumulators_width = CI_unique_documents >> CI_accumulators_shift;
+CI_accumulators_width = 1 << CI_accumulators_shift;
 CI_accumulators_height = (CI_unique_documents + CI_accumulators_width) / CI_accumulators_width;
 accumulators_needed = CI_accumulators_width * CI_accumulators_height;				// guaranteed to be larger than the highest accumulagtor that can be initialised
 CI_accumulator_clean_flags = new uint8_t[CI_accumulators_height];
+
+/*
+printf("Documents    :%u\n", CI_unique_documents);
+printf("Shift        :%u\n", CI_accumulators_shift);
+printf("Width        :%u\n", CI_accumulators_width);
+printf("Height       :%u\n",  CI_accumulators_height);
+printf("Needed (W*H) :%u\n",  accumulators_needed);
+*/
 
 /*
 	Now prime the search engine
 */
 CI_accumulators = new uint16_t[accumulators_needed];
 CI_accumulator_pointers = new uint16_t * [accumulators_needed];
-//CI_top_k = CI_unique_documents + 1;
-CI_top_k = 10;
+CI_top_k = CI_unique_documents + 1;
 CI_heap = new ANT_heap<uint16_t *, add_rsv_compare>(*CI_accumulator_pointers, CI_top_k);
 
 /*

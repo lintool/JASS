@@ -70,7 +70,7 @@ add_rsv_compare cmp;
 if (CI_accumulator_clean_flags[docid >> CI_accumulators_shift] == 0)
 	{
 	CI_accumulator_clean_flags[docid >> CI_accumulators_shift] = 1;
-	memset(CI_accumulators + (CI_accumulators_width * (docid >> CI_accumulators_shift)), 0, CI_accumulators_width);
+	memset(CI_accumulators + (CI_accumulators_width * (docid >> CI_accumulators_shift)), 0, CI_accumulators_width * sizeof(uint16_t));
 	}
 
 /*
