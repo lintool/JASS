@@ -87,7 +87,7 @@ return total / 1000; //because there are 1000 microseconds in a millisecond
 	TREC_DUMP_RESULTS()
 	-------------------
 */
-void trec_dump_results(uint32_t topic_id)
+void trec_dump_results(uint32_t topic_id, FILE *out)
 {
 uint32_t current, id;
 uint32_t output_length;
@@ -98,9 +98,8 @@ output_length = CI_results_list_length;
 for (current = 0; current < CI_results_list_length; current++)
 	{
 	id = CI_accumulator_pointers[current] - CI_accumulators;
-	printf("%d Q0 %s %d %d COMPILED (ID:%u)\n", topic_id, CI_doclist[id], current + 1, CI_accumulators[id], id);
+	fprintf(out, "%d Q0 %s %d %d COMPILED (ID:%u)\n", topic_id, CI_doclist[id], current + 1, CI_accumulators[id], id);
 	}
-puts("");
 }
 
 /*
@@ -111,7 +110,7 @@ int main(int argc, char *argv[])
 {
 static char buffer[1024];
 const char *SEPERATORS = " \t\r\n";
-FILE *fp;
+FILE *fp, *out;
 char *term, *id;
 uint64_t query_id;
 CI_vocab *postings_list;
@@ -130,6 +129,9 @@ if (argc != 2 && argc != 3)
 
 if ((fp = fopen(argv[1], "r")) == NULL)
 	exit(printf("Can't open query file:%s\n", argv[1]));
+
+if ((out = fopen("ranking.txt", "w")) == NULL )
+  exit(printf("Can't open output file.\n"));
 
 /*
 	Compute the details of the accumulator table
@@ -214,19 +216,21 @@ while (fgets(buffer, sizeof(buffer), fp) != NULL)
 	/*
 		Creat a TREC run file as output
 	*/
-	trec_dump_results(query_id);
+	trec_dump_results(query_id, out);
 	}
 total_time_to_search += timer_stop(full_query_timer);
 
 us_convert = timer_ticks_per_microsecond();
 
 printf("Averages over %llu queries\n", total_number_of_topics);
-printf("Accumulator initialisation: %lluus (%lluticks)\n", stats_accumulator_time / total_number_of_topics / us_convert, stats_accumulator_time / total_number_of_topics);
-printf("Vocabulary lookup         : %lluus (%lluticks)\n", stats_vocab_time / total_number_of_topics / us_convert, stats_vocab_time / total_number_of_topics);
-printf("Process Postings          : %lluus (%lluticks)\n", stats_postings_time / total_number_of_topics / us_convert, stats_postings_time / total_number_of_topics);
-printf("Order the top-k           : %lluus (%lluticks)\n", stats_sort_time / total_number_of_topics / us_convert, stats_sort_time / total_number_of_topics);
-printf("Total time excluding I/O  : %lluus (%lluticks)\n", total_time_to_search_without_io / total_number_of_topics / us_convert, total_time_to_search_without_io / total_number_of_topics);
-printf("Total time including I/O  : %lluus (%lluticks)\n", total_time_to_search / total_number_of_topics / us_convert, total_time_to_search / total_number_of_topics);
+printf("Accumulator initialisation : %4llu us (%8llu ticks)\n", stats_accumulator_time / total_number_of_topics / us_convert, stats_accumulator_time / total_number_of_topics);
+printf("Vocabulary lookup          : %4llu us (%8llu ticks)\n", stats_vocab_time / total_number_of_topics / us_convert, stats_vocab_time / total_number_of_topics);
+printf("Process Postings           : %4llu us (%8llu ticks)\n", stats_postings_time / total_number_of_topics / us_convert, stats_postings_time / total_number_of_topics);
+printf("Order the top-k            : %4llu us (%8llu ticks)\n", stats_sort_time / total_number_of_topics / us_convert, stats_sort_time / total_number_of_topics);
+printf("Total time excluding I/O   : %4llu us (%8llu ticks)\n", total_time_to_search_without_io / total_number_of_topics / us_convert, total_time_to_search_without_io / total_number_of_topics);
+printf("Total time including I/O   : %4llu us (%8llu ticks)\n", total_time_to_search / total_number_of_topics / us_convert, total_time_to_search / total_number_of_topics);
+
+fclose(out);
 
 return 0;
 }
