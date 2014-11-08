@@ -225,7 +225,7 @@ us_convert = timer_ticks_per_microsecond();
 printf("Averages over %llu queries\n", total_number_of_topics);
 printf("Accumulator initialisation : %4llu us (%8llu ticks)\n", stats_accumulator_time / total_number_of_topics / us_convert, stats_accumulator_time / total_number_of_topics);
 printf("Vocabulary lookup          : %4llu us (%8llu ticks)\n", stats_vocab_time / total_number_of_topics / us_convert, stats_vocab_time / total_number_of_topics);
-printf("Process Postings           : %4llu us (%8llu ticks)\n", stats_postings_time / total_number_of_topics / us_convert, stats_postings_time / total_number_of_topics);
+printf("Process postings           : %4llu us (%8llu ticks)\n", stats_postings_time / total_number_of_topics / us_convert, stats_postings_time / total_number_of_topics);
 printf("Order the top-k            : %4llu us (%8llu ticks)\n", stats_sort_time / total_number_of_topics / us_convert, stats_sort_time / total_number_of_topics);
 printf("Total time excluding I/O   : %4llu us (%8llu ticks)\n", total_time_to_search_without_io / total_number_of_topics / us_convert, total_time_to_search_without_io / total_number_of_topics);
 printf("Total time including I/O   : %4llu us (%8llu ticks)\n", total_time_to_search / total_number_of_topics / us_convert, total_time_to_search / total_number_of_topics);
