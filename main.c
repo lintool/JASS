@@ -52,7 +52,7 @@ static mach_timebase_info_data_t tick_count;
 
 mach_timebase_info(&tick_count);
 
-return count * tick_count.numer / tick_count.denom;
+return (count / 1000) * (tick_count.numer / tick_count.denom);
 }
 
 /*
@@ -223,12 +223,12 @@ stats_total_time_to_search += timer_stop(full_query_timer);
 print_os_time();
 
 printf("Averages over %llu queries\n", total_number_of_topics);
-printf("Accumulator initialisation           : %4llu us (%8llu ticks)\n", timer_ticks_per_microsecond(stats_accumulator_time / total_number_of_topics), stats_accumulator_time / total_number_of_topics);
-printf("Vocabulary lookup                    : %4llu us (%8llu ticks)\n", timer_ticks_per_microsecond(stats_vocab_time / total_number_of_topics), stats_vocab_time / total_number_of_topics);
-printf("Process postings                     : %4llu us (%8llu ticks)\n", timer_ticks_per_microsecond(stats_postings_time / total_number_of_topics), stats_postings_time / total_number_of_topics);
-printf("Order the top-k                      : %4llu us (%8llu ticks)\n", timer_ticks_per_microsecond(stats_sort_time / total_number_of_topics), stats_sort_time / total_number_of_topics);
-printf("Total time excluding I/O             : %4llu us (%8llu ticks)\n", timer_ticks_per_microsecond(stats_total_time_to_search_without_io / total_number_of_topics), stats_total_time_to_search_without_io / total_number_of_topics);
-printf("Total run time                       : %4llu us (%8llu ticks)\n", timer_ticks_per_microsecond(stats_total_time_to_search), stats_total_time_to_search);
+printf("Accumulator initialisation per query : %10llu us (%llu ticks)\n", timer_ticks_per_microsecond(stats_accumulator_time / total_number_of_topics), stats_accumulator_time / total_number_of_topics);
+printf("Vocabulary lookup per query          : %10llu us (%llu ticks)\n", timer_ticks_per_microsecond(stats_vocab_time / total_number_of_topics), stats_vocab_time / total_number_of_topics);
+printf("Process postings per query           : %10llu us (%llu ticks)\n", timer_ticks_per_microsecond(stats_postings_time / total_number_of_topics), stats_postings_time / total_number_of_topics);
+printf("Order the top-k per query            : %10llu us (%llu ticks)\n", timer_ticks_per_microsecond(stats_sort_time / total_number_of_topics), stats_sort_time / total_number_of_topics);
+printf("Total time excluding I/O per query   : %10llu us (%llu ticks)\n", timer_ticks_per_microsecond(stats_total_time_to_search_without_io / total_number_of_topics), stats_total_time_to_search_without_io / total_number_of_topics);
+printf("Total run time                       : %10llu us (%llu ticks)\n", timer_ticks_per_microsecond(stats_total_time_to_search), stats_total_time_to_search);
 
 return 0;
 }
