@@ -46,13 +46,13 @@ return mach_absolute_time() - now;
 	TIMER_TICKS_PER_MICROSECOND()
 	-----------------------------
 */
-uint64_t timer_ticks_per_microsecond(void)
+uint64_t timer_ticks_per_microsecond(uint64_t count)
 {
 static mach_timebase_info_data_t tick_count;
 
 mach_timebase_info(&tick_count);
 
-return 1000.0 * tick_count.numer / tick_count.denom;
+return count * tick_count.numer / tick_count.denom;
 }
 
 /*
@@ -69,7 +69,7 @@ if (times(&tmsbuf) > 0)
 	printf("OS reports kernel time: %.3f seconds\n", (double)tmsbuf.tms_stime / clock_speed);
 	printf("OS reports user time  : %.3f seconds\n", (double)tmsbuf.tms_utime / clock_speed);
 	}
-	}
+}
 
 /*
 	TREC_DUMP_RESULTS()
@@ -104,7 +104,7 @@ FILE *fp, *out;
 char *term, *id;
 uint64_t query_id;
 CI_vocab *postings_list;
-uint64_t timer, full_query_without_io_timer, us_convert;
+uint64_t timer, full_query_without_io_timer;
 uint64_t stats_accumulator_time;
 uint64_t stats_vocab_time;
 uint64_t stats_postings_time;
@@ -220,17 +220,15 @@ fclose(out);
 fclose(fp);
 
 stats_total_time_to_search += timer_stop(full_query_timer);
-
-us_convert = timer_ticks_per_microsecond();
+print_os_time();
 
 printf("Averages over %llu queries\n", total_number_of_topics);
-printf("Accumulator initialisation           : %4llu us (%8llu ticks)\n", stats_accumulator_time / total_number_of_topics / us_convert, stats_accumulator_time / total_number_of_topics);
-printf("Vocabulary lookup                    : %4llu us (%8llu ticks)\n", stats_vocab_time / total_number_of_topics / us_convert, stats_vocab_time / total_number_of_topics);
-printf("Process postings                     : %4llu us (%8llu ticks)\n", stats_postings_time / total_number_of_topics / us_convert, stats_postings_time / total_number_of_topics);
-printf("Order the top-k                      : %4llu us (%8llu ticks)\n", stats_sort_time / total_number_of_topics / us_convert, stats_sort_time / total_number_of_topics);
-printf("Total time excluding I/O             : %4llu us (%8llu ticks)\n", stats_total_time_to_search_without_io / total_number_of_topics / us_convert, stats_total_time_to_search_without_io / total_number_of_topics);
-printf("Total time including I/O and repeats : %4llu us (%8llu ticks)\n", stats_total_time_to_search / total_number_of_topics / us_convert, stats_total_time_to_search / total_number_of_topics);
-print_os_time();
+printf("Accumulator initialisation           : %4llu us (%8llu ticks)\n", timer_ticks_per_microsecond(stats_accumulator_time / total_number_of_topics), stats_accumulator_time / total_number_of_topics);
+printf("Vocabulary lookup                    : %4llu us (%8llu ticks)\n", timer_ticks_per_microsecond(stats_vocab_time / total_number_of_topics), stats_vocab_time / total_number_of_topics);
+printf("Process postings                     : %4llu us (%8llu ticks)\n", timer_ticks_per_microsecond(stats_postings_time / total_number_of_topics), stats_postings_time / total_number_of_topics);
+printf("Order the top-k                      : %4llu us (%8llu ticks)\n", timer_ticks_per_microsecond(stats_sort_time / total_number_of_topics), stats_sort_time / total_number_of_topics);
+printf("Total time excluding I/O             : %4llu us (%8llu ticks)\n", timer_ticks_per_microsecond(stats_total_time_to_search_without_io / total_number_of_topics), stats_total_time_to_search_without_io / total_number_of_topics);
+printf("Total run time                       : %4llu us (%8llu ticks)\n", timer_ticks_per_microsecond(stats_total_time_to_search), stats_total_time_to_search);
 
 return 0;
 }
