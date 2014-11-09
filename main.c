@@ -81,7 +81,7 @@ uint32_t current, id;
 uint32_t output_length;
 
 output_length = CI_results_list_length < 10 ? CI_results_list_length : 10;			// at most 10 results will be printed per query
-output_length = CI_results_list_length;
+output_length = CI_results_list_length;														// uncomment this line to print all the results into the TREC resuls file
 
 for (current = 0; current < CI_results_list_length; current++)
 	{
@@ -146,7 +146,6 @@ CI_heap = new ANT_heap<uint16_t *, add_rsv_compare>(*CI_accumulator_pointers, CI
 */
 while (experimental_repeat < times_to_repeat_experiment)
 	{
-	puts("Repeat");
 	experimental_repeat++;
 	stats_accumulator_time = 0;
 	stats_vocab_time = 0;
@@ -213,7 +212,7 @@ while (experimental_repeat < times_to_repeat_experiment)
 		/*
 			Creat a TREC run file as output
 		*/
-//		trec_dump_results(query_id, out);
+		trec_dump_results(query_id, out);
 		}
 	}
 
