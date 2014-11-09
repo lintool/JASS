@@ -2,10 +2,15 @@
 	MAIN.C
 	------
 */
+#ifdef __APPLE__
+	#include <mach/mach.h>
+	#include <mach/mach_time.h>
+#endif
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/time.h>
+#include <unistd.h>
+#include <sys/times.h>
 #include "CI.h"
 
 uint16_t *CI_accumulators;
@@ -19,33 +24,13 @@ uint32_t CI_accumulators_width;
 uint32_t CI_accumulators_height;
 uint8_t *CI_accumulator_clean_flags;
 
-#ifndef _MSC_VER
-	/*
-		__RDTSC()
-		---------
-	*/
-	inline uint64_t __rdtsc()
-	{
-	uint32_t lo, hi;
-	__asm__ __volatile__
-		(
-		"cpuid\n"
-		"rdtsc\n"
-		: "=a" (lo), "=d" (hi)
-		:
-		: "%ebx", "%ecx"
-		);
-	return (uint64_t)hi << 32 | lo;
-	}
-#endif
-
 /*
 	TIMER_START()
 	-------------
 */
 inline uint64_t timer_start(void)
 {
-return __rdtsc();
+return mach_absolute_time();
 }
 
 /*
@@ -54,7 +39,7 @@ return __rdtsc();
 */
 uint64_t timer_stop(uint64_t now)
 {
-return __rdtsc() - now;
+return mach_absolute_time() - now;
 }
 
 /*
@@ -63,25 +48,28 @@ return __rdtsc() - now;
 */
 uint64_t timer_ticks_per_microsecond(void)
 {
-struct timespec period, remaining;
-uint64_t start, total;
+static mach_timebase_info_data_t tick_count;
 
-memset(&period, 0, sizeof(period));
-memset(&remaining, 0, sizeof(remaining));
+mach_timebase_info(&tick_count);
 
-period.tv_sec = 0;
-period.tv_nsec = 1000 * 1000;				// wait for 1 million nanoseconds (which is 1 millisecond)
-
-do
-	{
-	start = timer_start();
-	nanosleep(&period, &remaining);
-	total = timer_stop(start);
-	}
-while (remaining.tv_sec != 0 || remaining.tv_nsec != 0);
-
-return total / 1000; //because there are 1000 microseconds in a millisecond
+return 1000.0 * tick_count.numer / tick_count.denom;
 }
+
+/*
+	PRINT_OS_TIME()
+	---------------
+*/
+void print_os_time(void)
+{
+struct tms tmsbuf;
+long clock_speed = sysconf(_SC_CLK_TCK);
+
+if (times(&tmsbuf) > 0)
+	{
+	printf("OS reports kernel time: %.3f seconds\n", (double)tmsbuf.tms_stime / clock_speed);
+	printf("OS reports user time  : %.3f seconds\n", (double)tmsbuf.tms_utime / clock_speed);
+	}
+	}
 
 /*
 	TREC_DUMP_RESULTS()
@@ -108,21 +96,24 @@ for (current = 0; current < CI_results_list_length; current++)
 */
 int main(int argc, char *argv[])
 {
+uint64_t full_query_timer = timer_start();
+
 static char buffer[1024];
 const char *SEPERATORS = " \t\r\n";
 FILE *fp, *out;
 char *term, *id;
 uint64_t query_id;
 CI_vocab *postings_list;
-uint64_t timer, full_query_timer, full_query_without_io_timer, us_convert;
-uint64_t stats_accumulator_time = 0;
-uint64_t stats_vocab_time = 0;
-uint64_t stats_postings_time = 0;
-uint64_t stats_sort_time = 0;
-uint64_t total_number_of_topics = 0;
-uint64_t total_time_to_search = 0;
-uint64_t total_time_to_search_without_io = 0;
+uint64_t timer, full_query_without_io_timer, us_convert;
+uint64_t stats_accumulator_time;
+uint64_t stats_vocab_time;
+uint64_t stats_postings_time;
+uint64_t stats_sort_time;
+uint64_t total_number_of_topics;
+uint64_t stats_total_time_to_search;
+uint64_t stats_total_time_to_search_without_io;
 uint32_t accumulators_needed;
+uint64_t experimental_repeat = 0, times_to_repeat_experiment = 2;
 
 if (argc != 2 && argc != 3)
 	exit(printf("Usage:%s <queryfile> [<top-k-number>]\n", argv[0]));
@@ -143,14 +134,6 @@ accumulators_needed = CI_accumulators_width * CI_accumulators_height;				// guar
 CI_accumulator_clean_flags = new uint8_t[CI_accumulators_height];
 
 /*
-printf("Documents    :%u\n", CI_unique_documents);
-printf("Shift        :%u\n", CI_accumulators_shift);
-printf("Width        :%u\n", CI_accumulators_width);
-printf("Height       :%u\n",  CI_accumulators_height);
-printf("Needed (W*H) :%u\n",  accumulators_needed);
-*/
-
-/*
 	Now prime the search engine
 */
 CI_accumulators = new uint16_t[accumulators_needed];
@@ -161,76 +144,94 @@ CI_heap = new ANT_heap<uint16_t *, add_rsv_compare>(*CI_accumulator_pointers, CI
 /*
 	Now start searching
 */
-full_query_timer = timer_start();
-while (fgets(buffer, sizeof(buffer), fp) != NULL)
+while (experimental_repeat < times_to_repeat_experiment)
 	{
-	full_query_without_io_timer = timer_start();
-	if ((id = strtok(buffer, SEPERATORS)) == NULL)
-		continue;
+	puts("Repeat");
+	experimental_repeat++;
+	stats_accumulator_time = 0;
+	stats_vocab_time = 0;
+	stats_postings_time = 0;
+	stats_sort_time = 0;
+	stats_total_time_to_search = 0;
+	stats_total_time_to_search_without_io = 0;
+	total_number_of_topics = 0;
 
-	total_number_of_topics++;
-	CI_results_list_length = 0;
+	rewind(fp);
+	rewind(out);
 
-	/*
-		get the TREC query_id
-	*/
-	query_id = atoll(id);
-
-	/*
-		Initialise the accumulators
-	*/
-	timer = timer_start();
-	memset(CI_accumulator_clean_flags, 0, CI_accumulators_height);
-	stats_accumulator_time += timer_stop(timer);
-
-	/*
-		For each term, call the method to update the accumulators
-	*/
-	while ((term = strtok(NULL, SEPERATORS)) != NULL)
+	while (fgets(buffer, sizeof(buffer), fp) != NULL)
 		{
+		full_query_without_io_timer = timer_start();
+		if ((id = strtok(buffer, SEPERATORS)) == NULL)
+			continue;
+
+		total_number_of_topics++;
+		CI_results_list_length = 0;
+
+		/*
+			get the TREC query_id
+		*/
+		query_id = atoll(id);
+
+		/*
+			Initialise the accumulators
+		*/
 		timer = timer_start();
-		postings_list = (CI_vocab *)bsearch(term, CI_dictionary, CI_unique_terms, sizeof(*CI_dictionary), CI_vocab::compare_string);
-		stats_vocab_time += timer_stop(timer);
-		if (postings_list != NULL)
+		memset(CI_accumulator_clean_flags, 0, CI_accumulators_height);
+		stats_accumulator_time += timer_stop(timer);
+
+		/*
+			For each term, call the method to update the accumulators
+		*/
+		while ((term = strtok(NULL, SEPERATORS)) != NULL)
 			{
 			timer = timer_start();
-			postings_list->method();
-			stats_postings_time += timer_stop(timer);
+			postings_list = (CI_vocab *)bsearch(term, CI_dictionary, CI_unique_terms, sizeof(*CI_dictionary), CI_vocab::compare_string);
+			stats_vocab_time += timer_stop(timer);
+			if (postings_list != NULL)
+				{
+				timer = timer_start();
+				postings_list->method();
+				stats_postings_time += timer_stop(timer);
+				}
 			}
+
+		/*
+			sort the accumulator pointers to put the highest RSV document at the top of the list
+		*/
+		timer = timer_start();
+		top_k_qsort(CI_accumulator_pointers, CI_results_list_length, CI_top_k);
+		stats_sort_time += timer_stop(timer);
+
+		/*
+			At this point we know the number of hits (CI_results_list_length) and they can be decode out of the CI_accumulator_pointers array
+			where CI_accumulator_pointers[0] points into CI_accumulators[] and therefore CI_accumulator_pointers[0] - CI_accumulators is the docid
+			and *CI_accumulator_pointers[0] is the rsv.
+		*/
+		stats_total_time_to_search_without_io += timer_stop(full_query_without_io_timer);
+
+		/*
+			Creat a TREC run file as output
+		*/
+//		trec_dump_results(query_id, out);
 		}
-
-	/*
-		sort the accumulator pointers to put the highest RSV document at the top of the list
-	*/
-	timer = timer_start();
-	top_k_qsort(CI_accumulator_pointers, CI_results_list_length, CI_top_k);
-	stats_sort_time += timer_stop(timer);
-
-	/*
-		At this point we know the number of hits (CI_results_list_length) and they can be decode out of the CI_accumulator_pointers array
-		where CI_accumulator_pointers[0] points into CI_accumulators[] and therefore CI_accumulator_pointers[0] - CI_accumulators is the docid
-		and *CI_accumulator_pointers[0] is the rsv.
-	*/
-	total_time_to_search_without_io += timer_stop(full_query_without_io_timer);
-
-	/*
-		Creat a TREC run file as output
-	*/
-	trec_dump_results(query_id, out);
 	}
-total_time_to_search += timer_stop(full_query_timer);
+
+fclose(out);
+fclose(fp);
+
+stats_total_time_to_search += timer_stop(full_query_timer);
 
 us_convert = timer_ticks_per_microsecond();
 
 printf("Averages over %llu queries\n", total_number_of_topics);
-printf("Accumulator initialisation : %4llu us (%8llu ticks)\n", stats_accumulator_time / total_number_of_topics / us_convert, stats_accumulator_time / total_number_of_topics);
-printf("Vocabulary lookup          : %4llu us (%8llu ticks)\n", stats_vocab_time / total_number_of_topics / us_convert, stats_vocab_time / total_number_of_topics);
-printf("Process postings           : %4llu us (%8llu ticks)\n", stats_postings_time / total_number_of_topics / us_convert, stats_postings_time / total_number_of_topics);
-printf("Order the top-k            : %4llu us (%8llu ticks)\n", stats_sort_time / total_number_of_topics / us_convert, stats_sort_time / total_number_of_topics);
-printf("Total time excluding I/O   : %4llu us (%8llu ticks)\n", total_time_to_search_without_io / total_number_of_topics / us_convert, total_time_to_search_without_io / total_number_of_topics);
-printf("Total time including I/O   : %4llu us (%8llu ticks)\n", total_time_to_search / total_number_of_topics / us_convert, total_time_to_search / total_number_of_topics);
-
-fclose(out);
+printf("Accumulator initialisation           : %4llu us (%8llu ticks)\n", stats_accumulator_time / total_number_of_topics / us_convert, stats_accumulator_time / total_number_of_topics);
+printf("Vocabulary lookup                    : %4llu us (%8llu ticks)\n", stats_vocab_time / total_number_of_topics / us_convert, stats_vocab_time / total_number_of_topics);
+printf("Process postings                     : %4llu us (%8llu ticks)\n", stats_postings_time / total_number_of_topics / us_convert, stats_postings_time / total_number_of_topics);
+printf("Order the top-k                      : %4llu us (%8llu ticks)\n", stats_sort_time / total_number_of_topics / us_convert, stats_sort_time / total_number_of_topics);
+printf("Total time excluding I/O             : %4llu us (%8llu ticks)\n", stats_total_time_to_search_without_io / total_number_of_topics / us_convert, stats_total_time_to_search_without_io / total_number_of_topics);
+printf("Total time including I/O and repeats : %4llu us (%8llu ticks)\n", stats_total_time_to_search / total_number_of_topics / us_convert, stats_total_time_to_search / total_number_of_topics);
+print_os_time();
 
 return 0;
 }
