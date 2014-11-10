@@ -18,13 +18,14 @@ class CI_vocab
 {
 public:
 	const char *term;
-	void (*method)(void);
-	uint64_t cf;
-	uint64_t df;
+	void (**methods)(void);
+	uint64_t impacts;
+
 public:
 	static int compare(const void *a, const void *b) { return strcmp(((CI_vocab*)a)->term, ((CI_vocab*)b)->term);}
 	static int compare_string(const void *a, const void *b) { return strcmp((char *)a, ((CI_vocab*)b)->term);}
 };
+
 
 extern uint32_t CI_unique_terms;					// number of terms in the vocab
 extern CI_vocab CI_dictionary[];					// the vocab array

@@ -4,11 +4,15 @@
 	atire dump format:
 	term cf df <docid,impact>...<docid,impact>
 */
+#include <sstream>
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <limits.h>
+
+using namespace std;
 
 uint32_t seperate_files = false;									// set this to false to get all the postings into a single file
 static char buffer[1024 * 1024 * 1024];
@@ -92,6 +96,7 @@ uint64_t cf, df, docid, impact, first_time = true, max_docid = 0, max_q = 0;
 FILE *fp, *vocab_dot_c, *postings_dot_c, *postings_dot_h, *doclist, *doclist_dot_c, *makefile, *makefile_include;
 uint32_t include_postings;
 uint64_t positings_file_number = 0;
+uint64_t previous_impact, impacts_for_this_term;
 
 if (argc != 3 && argc != 4)
 	exit(printf("Usage: %s <index.dump> <docid.aspt> [<topicfile>]\nGenerate index.dump with atire_dictionary > index.dump\nGeneratedocid.aspt with atire_doclist\nGenerate <topicfile> with trec2query <trectopicfile> t\n", argv[0]));
@@ -181,20 +186,7 @@ while (fgets(buffer, sizeof(buffer), fp) != NULL)
 			else
 				include_postings = false;
 
-			if (first_time)
-				{
-				if (include_postings)
-					fprintf(vocab_dot_c, "{\"%s\", CIt_%s, %lld, %lld}", buffer, buffer, cf, df);			// add to the vocab c file
-				else
-					fprintf(vocab_dot_c, "{\"%s\", 0, %lld, %lld}", buffer, cf, df);			// add to the vocab c file
-				first_time = false;
-				}
-			else
-				if (include_postings)
-					fprintf(vocab_dot_c, ",\n{\"%s\", CIt_%s, %lld, %lld}", buffer, buffer, cf, df);			// add to the vocab c file
-				else
-					fprintf(vocab_dot_c, ",\n{\"%s\", 0, %lld, %lld}", buffer, cf, df);			// add to the vocab c file
-
+			impacts_for_this_term = 0;
 			if (include_postings)
 				{
 				if ((end_of_term = strchr(end_of_term + 1, '<')) != NULL)
@@ -205,7 +197,7 @@ while (fgets(buffer, sizeof(buffer), fp) != NULL)
 						fprintf(makefile, "CIt_%s.o : CIt_%s.c\n\t $(CXX) $(CXXFLAGS) $(CI_FLAGS) CIt_%s.c\n\n", buffer, buffer, buffer);
 						fprintf(makefile_include, " CIt_%s.o", buffer);
 						}
-					else if (((line - 1)% TERMS_PER_SOURCE_CODE_FILE) == 0)
+					else if (((line - 1) % TERMS_PER_SOURCE_CODE_FILE) == 0)
 						{
 						char filename[1024];
 
@@ -219,8 +211,8 @@ while (fgets(buffer, sizeof(buffer), fp) != NULL)
 						fprintf(makefile_include, " CIt_%llu.o", positings_file_number);
 						}
 
-					fprintf(postings_dot_h, "void CIt_%s(void);\n", buffer);
-					fprintf(postings_dot_c, "void CIt_%s(void)\n{\n", buffer);
+					previous_impact = ULONG_MAX;
+					ostringstream term_method_list;
 
 					while (end_of_term != NULL)
 						if ((end_of_term = strchr(end_of_term, '<')) != NULL)
@@ -235,14 +227,43 @@ while (fgets(buffer, sizeof(buffer), fp) != NULL)
 							if (impact > max_q)
 								max_q = impact;
 
-							fprintf(postings_dot_c, "add_rsv(%lld, %lld);\n", docid, impact);
+							if (impact != previous_impact)
+								{
+								if (previous_impact == ULONG_MAX)
+									{
+									fprintf(postings_dot_h, "extern void (*CIt_i_%s[])(void);\n", buffer);
+									term_method_list << "void (*CIt_i_" << buffer << "[])(void) =\n{\n";
+									}
+								else
+									fprintf(postings_dot_c, "}\n\n");
+
+								fprintf(postings_dot_c, "static void CIt_%s_i_%llu(void)\n{\n", buffer, impact);
+								term_method_list << "CIt_" << buffer << "_i_" << impact << ",\n";
+								previous_impact = impact;
+								impacts_for_this_term++;
+								}
+							fprintf(postings_dot_c, "add_rsv(%llu, %llu);\n", docid, impact);
 							}
 					fprintf(postings_dot_c, "}\n\n");
 
+					fprintf(postings_dot_c, "%s0\n};\n", term_method_list.str().c_str());
 					if (seperate_files)
 						close_postings_dot_c(postings_dot_c);
 					}
 				}
+			if (first_time)
+				{
+				if (include_postings)
+					fprintf(vocab_dot_c, "{\"%s\", CIt_i_%s, %llu}", buffer, buffer, impacts_for_this_term);			// add to the vocab c file
+				else
+					fprintf(vocab_dot_c, "{\"%s\", 0, %llu}", buffer, impacts_for_this_term);			// add to the vocab c file
+				first_time = false;
+				}
+			else
+				if (include_postings)
+					fprintf(vocab_dot_c, ",\n{\"%s\", CIt_i_%s, %llu}", buffer, buffer, impacts_for_this_term);			// add to the vocab c file
+				else
+					fprintf(vocab_dot_c, ",\n{\"%s\", 0, %llu}", buffer, impacts_for_this_term);			// add to the vocab c file
 			}
 		}
 	}

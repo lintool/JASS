@@ -198,7 +198,8 @@ while (experimental_repeat < times_to_repeat_experiment)
 			if (postings_list != NULL)
 				{
 				timer = timer_start();
-				postings_list->method();
+				for (void (**method)(void) = postings_list->methods; method != NULL; method++)
+					(**method)();
 				stats_postings_time += timer_stop(timer);
 				}
 			}
