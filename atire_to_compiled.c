@@ -12,6 +12,13 @@
 #include <sys/stat.h>
 #include <limits.h>
 
+#ifdef _MSC_VER
+	#include <direct.h>
+
+	#define atoll(x) _atoi64(x)
+	#define mkdir(x,y) _mkdir(x)
+#endif
+
 using namespace std;
 
 uint32_t seperate_files = false;									// set this to false to get all the postings into a single file
@@ -155,11 +162,19 @@ postings_dot_c = NULL;
 mkdir("CIpostings", S_IRUSR | S_IWUSR | S_IXUSR | S_IRGRP | S_IXGRP | S_IROTH | S_IXOTH);
 if ((makefile = fopen("CIpostings/makefile", "wb")) == NULL)
 	exit(printf("Cannot open 'CIpostings/makefile' output file\n"));
-fprintf(makefile, "include makefile.include\n\nCI_FLAGS = -c\n\n");
+#ifdef _MSC_VER
+	fprintf(makefile, "include makefile.include\n\nCI_FLAGS = -c /Tp\n\n");
+#else
+	fprintf(makefile, "include makefile.include\n\nCI_FLAGS = -c\n\n");
+#endif
 
 if ((makefile_include = fopen("CIpostings/makefile.include", "wb")) == NULL)
 	exit(printf("Cannot open 'CIpostings/makefile.include' output file\n"));
-fprintf(makefile_include, "../CIpostings.o : ");
+#ifdef _MSC_VER
+	fprintf(makefile_include, "../CIpostings.obj : ");
+#else
+	fprintf(makefile_include, "../CIpostings.o : ");
+#endif
 
 if ((postings_dot_h = fopen("CIpostings.h", "wb")) == NULL)
 	exit(printf("Cannot open CIpostings.h output file\n"));
@@ -194,8 +209,13 @@ while (fgets(buffer, sizeof(buffer), fp) != NULL)
 					if (seperate_files)
 						{
 						postings_dot_c = open_postings_dot_c(buffer);
-						fprintf(makefile, "CIt_%s.o : CIt_%s.c\n\t $(CXX) $(CXXFLAGS) $(CI_FLAGS) CIt_%s.c\n\n", buffer, buffer, buffer);
-						fprintf(makefile_include, " CIt_%s.o", buffer);
+						#ifdef _MSC_VER
+							fprintf(makefile, "CIt_%s.obj : CIt_%s.c\n\t $(CXX) $(CXXFLAGS) $(CI_FLAGS) CIt_%s.c\n\n", buffer, buffer, buffer);
+							fprintf(makefile_include, " CIt_%s.obj", buffer);
+						#else
+							fprintf(makefile, "CIt_%s.o : CIt_%s.c\n\t $(CXX) $(CXXFLAGS) $(CI_FLAGS) CIt_%s.c\n\n", buffer, buffer, buffer);
+							fprintf(makefile_include, " CIt_%s.o", buffer);
+						#endif
 						}
 					else if (((line - 1) % TERMS_PER_SOURCE_CODE_FILE) == 0)
 						{
@@ -207,8 +227,13 @@ while (fgets(buffer, sizeof(buffer), fp) != NULL)
 							close_postings_dot_c(postings_dot_c);
 						postings_dot_c = open_postings_dot_c(filename);
 
-						fprintf(makefile, "CIt_%llu.o : CIt_%llu.c\n\t $(CXX) $(CXXFLAGS) $(CI_FLAGS) CIt_%llu.c\n\n", positings_file_number, positings_file_number, positings_file_number);
-						fprintf(makefile_include, " CIt_%llu.o", positings_file_number);
+						#ifdef _MSC_VER
+							fprintf(makefile, "CIt_%llu.ojb : CIt_%llu.c\n\t $(CXX) $(CXXFLAGS) $(CI_FLAGS)  CIt_%llu.c\n\n", positings_file_number, positings_file_number, positings_file_number);
+							fprintf(makefile_include, " CIt_%llu.obj", positings_file_number);
+						#else
+							fprintf(makefile, "CIt_%llu.o : CIt_%llu.c\n\t $(CXX) $(CXXFLAGS) $(CI_FLAGS) CIt_%llu.c\n\n", positings_file_number, positings_file_number, positings_file_number);
+							fprintf(makefile_include, " CIt_%llu.o", positings_file_number);
+						#endif
 						}
 
 					previous_impact = ULONG_MAX;
@@ -255,15 +280,15 @@ while (fgets(buffer, sizeof(buffer), fp) != NULL)
 				{
 				if (include_postings)
 					fprintf(vocab_dot_c, "{\"%s\", CIt_i_%s, %llu}", buffer, buffer, impacts_for_this_term);			// add to the vocab c file
-				else
-					fprintf(vocab_dot_c, "{\"%s\", 0, %llu}", buffer, impacts_for_this_term);			// add to the vocab c file
+//				else
+//					fprintf(vocab_dot_c, "{\"%s\", 0, %llu}", buffer, impacts_for_this_term);			// add to the vocab c file
 				first_time = false;
 				}
 			else
 				if (include_postings)
 					fprintf(vocab_dot_c, ",\n{\"%s\", CIt_i_%s, %llu}", buffer, buffer, impacts_for_this_term);			// add to the vocab c file
-				else
-					fprintf(vocab_dot_c, ",\n{\"%s\", 0, %llu}", buffer, impacts_for_this_term);			// add to the vocab c file
+//				else
+//					fprintf(vocab_dot_c, ",\n{\"%s\", 0, %llu}", buffer, impacts_for_this_term);			// add to the vocab c file
 			}
 		}
 	}
@@ -277,7 +302,11 @@ fclose(vocab_dot_c);
 fclose(fp);
 
 fclose(makefile);
-fprintf(makefile_include, "\n\tld -r CIt_*.o -o ../CIpostings.o\n\n");
+#ifdef _MSC_VER
+	fprintf(makefile_include, "\n\tlib CIt_*.obj /OUT:..\\CIpostings.lib\n\n");
+#else
+	fprintf(makefile_include, "\n\tld -r CIt_*.o -o ../CIpostings.o\n\n");
+#endif
 fclose(makefile_include);
 
 if (!seperate_files)

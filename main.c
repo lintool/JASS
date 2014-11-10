@@ -2,15 +2,22 @@
 	MAIN.C
 	------
 */
-#ifdef __APPLE__
-	#include <mach/mach.h>
-	#include <mach/mach_time.h>
-#endif
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <unistd.h>
-#include <sys/times.h>
+
+#ifdef _MSC_VER
+	#include <intrin.h>
+	#include <windows.h>
+#else
+	#ifdef __APPLE__
+		#include <mach/mach.h>
+		#include <mach/mach_time.h>
+	#endif
+	#include <unistd.h>
+	#include <sys/times.h>
+#endif
+
 #include "CI.h"
 
 uint16_t *CI_accumulators;
@@ -24,13 +31,45 @@ uint32_t CI_accumulators_width;
 uint32_t CI_accumulators_height;
 uint8_t *CI_accumulator_clean_flags;
 
+#ifdef _MSC_VER
+	#define atoll(x) _atoi64(x)
+	double log2(double n) { return log(n) / log(2.0); }
+#else
+	/*
+		__RDTSC()
+		---------
+	*/
+	inline uint64_t __rdtsc()
+	{
+	uint32_t lo, hi;
+	__asm__ __volatile__
+		(
+		"cpuid\n"
+		"rdtsc\n"
+		: "=a" (lo), "=d" (hi)
+		:
+		: "%ebx", "%ecx"
+		);
+	return (uint64_t)hi << 32 | lo;
+	}
+#endif
+
+
 /*
 	TIMER_START()
 	-------------
 */
 inline uint64_t timer_start(void)
 {
-return mach_absolute_time();
+#ifdef __APPLE__
+	return mach_absolute_time();
+#elif defined(_MSC_VER)
+	LARGE_INTEGER now;
+	QueryPerformanceCounter(&now);
+	return now.QuadPart;
+#else
+	return __rdtsc();
+#endif
 }
 
 /*
@@ -39,20 +78,71 @@ return mach_absolute_time();
 */
 uint64_t timer_stop(uint64_t now)
 {
-return mach_absolute_time() - now;
+#ifdef __APPLE__
+	return mach_absolute_time() - now;
+#elif defined(_MSC_VER)
+	LARGE_INTEGER current;
+	QueryPerformanceCounter(&current);
+	return current.QuadPart - now;
+#else
+	return __rdtsc() - now;
+#endif
 }
 
+#if !(defined( __APPLE__) || defined(_MSC_VER))
+	/*
+		TIMER_TICKS_PER_SECOND()
+		------------------------
+	*/
+	uint64_t timer_ticks_per_second(void)
+	{
+	static uint64_t answer = 0;
+	struct timespec period, remaining;
+	uint64_t start, total;
+
+	if (answer == 0)
+		{
+		memset(&period, 0, sizeof(period));
+		memset(&remaining, 0, sizeof(remaining));
+
+		period.tv_sec = 1;
+		period.tv_nsec = 0;
+
+		do
+			{
+			start = timer_start();
+			nanosleep(&period, &remaining);
+			total = timer_stop(start);
+			}
+		while (remaining.tv_sec != 0 || remaining.tv_nsec != 0);
+
+		answer = total;
+		}
+
+	return answeer;
+	}
+#endif
+
 /*
-	TIMER_TICKS_PER_MICROSECOND()
+	TIMER_TICKS_TO_MICROSECONDS()
 	-----------------------------
 */
-uint64_t timer_ticks_per_microsecond(uint64_t count)
+uint64_t timer_ticks_to_microseconds(uint64_t count)
 {
-static mach_timebase_info_data_t tick_count;
+#ifdef __APPLE__
+	static mach_timebase_info_data_t tick_count;
 
-mach_timebase_info(&tick_count);
+	mach_timebase_info(&tick_count);
 
-return (count / 1000) * (tick_count.numer / tick_count.denom);
+	return (count / 1000) * (tick_count.numer / tick_count.denom);
+#elif defined (_MSC_VER)
+	LARGE_INTEGER frequency;
+	QueryPerformanceFrequency(&frequency);
+
+	return (count * 1000000.0) / frequency.QuadPart;
+#else
+	return count * 1000000.0 / timer_ticks_per_second();
+#endif
 }
 
 /*
@@ -61,14 +151,16 @@ return (count / 1000) * (tick_count.numer / tick_count.denom);
 */
 void print_os_time(void)
 {
-struct tms tmsbuf;
-long clock_speed = sysconf(_SC_CLK_TCK);
+#ifdef __APPLE__
+	struct tms tmsbuf;
+	long clock_speed = sysconf(_SC_CLK_TCK);
 
-if (times(&tmsbuf) > 0)
-	{
-	printf("OS reports kernel time: %.3f seconds\n", (double)tmsbuf.tms_stime / clock_speed);
-	printf("OS reports user time  : %.3f seconds\n", (double)tmsbuf.tms_utime / clock_speed);
-	}
+	if (times(&tmsbuf) > 0)
+		{
+		printf("OS reports kernel time: %.3f seconds\n", (double)tmsbuf.tms_stime / clock_speed);
+		printf("OS reports user time  : %.3f seconds\n", (double)tmsbuf.tms_utime / clock_speed);
+		}
+#endif
 }
 
 /*
@@ -114,7 +206,6 @@ uint64_t stats_total_time_to_search;
 uint64_t stats_total_time_to_search_without_io;
 uint32_t accumulators_needed;
 uint64_t experimental_repeat = 0, times_to_repeat_experiment = 2;
-uint64_t zz;
 
 
 if (argc != 2 && argc != 3)
@@ -130,7 +221,7 @@ printf("Docs:%u\n", CI_unique_documents);
 /*
 	Compute the details of the accumulator table
 */
-CI_accumulators_shift = log2(sqrt(CI_unique_documents));
+CI_accumulators_shift = log2(sqrt((double)CI_unique_documents));
 CI_accumulators_width = 1 << CI_accumulators_shift;
 CI_accumulators_height = (CI_unique_documents + CI_accumulators_width) / CI_accumulators_width;
 accumulators_needed = CI_accumulators_width * CI_accumulators_height;				// guaranteed to be larger than the highest accumulagtor that can be initialised
@@ -157,7 +248,6 @@ while (experimental_repeat < times_to_repeat_experiment)
 	stats_total_time_to_search = 0;
 	stats_total_time_to_search_without_io = 0;
 	total_number_of_topics = 0;
-	zz = 0;
 
 	rewind(fp);
 	rewind(out);
@@ -183,10 +273,6 @@ while (experimental_repeat < times_to_repeat_experiment)
 		memset(CI_accumulator_clean_flags, 0, CI_accumulators_height);
 		stats_accumulator_time += timer_stop(timer);
 
-		timer = timer_start();
-		memset(CI_accumulators, 0, CI_unique_documents * sizeof(*CI_accumulators));
-		zz += timer_stop(timer);
-
 		/*
 			For each term, call the method to update the accumulators
 		*/
@@ -198,8 +284,8 @@ while (experimental_repeat < times_to_repeat_experiment)
 			if (postings_list != NULL)
 				{
 				timer = timer_start();
-				for (void (**method)(void) = postings_list->methods; method != NULL; method++)
-					(**method)();
+				for (void (**method)(void) = postings_list->methods; *method != NULL; method++)
+					(*method)();
 				stats_postings_time += timer_stop(timer);
 				}
 			}
@@ -232,13 +318,12 @@ stats_total_time_to_search += timer_stop(full_query_timer);
 print_os_time();
 
 printf("Averages over %llu queries\n", total_number_of_topics);
-printf("Accumulator initialisation per query : %10llu us (%llu ticks)\n", timer_ticks_per_microsecond(stats_accumulator_time / total_number_of_topics), stats_accumulator_time / total_number_of_topics);
-printf("Accumulator initialisation avoided : %10llu us (%llu ticks)\n", timer_ticks_per_microsecond(zz / total_number_of_topics), zz / total_number_of_topics);
-printf("Vocabulary lookup per query          : %10llu us (%llu ticks)\n", timer_ticks_per_microsecond(stats_vocab_time / total_number_of_topics), stats_vocab_time / total_number_of_topics);
-printf("Process postings per query           : %10llu us (%llu ticks)\n", timer_ticks_per_microsecond(stats_postings_time / total_number_of_topics), stats_postings_time / total_number_of_topics);
-printf("Order the top-k per query            : %10llu us (%llu ticks)\n", timer_ticks_per_microsecond(stats_sort_time / total_number_of_topics), stats_sort_time / total_number_of_topics);
-printf("Total time excluding I/O per query   : %10llu us (%llu ticks)\n", timer_ticks_per_microsecond(stats_total_time_to_search_without_io / total_number_of_topics), stats_total_time_to_search_without_io / total_number_of_topics);
-printf("Total run time                       : %10llu us (%llu ticks)\n", timer_ticks_per_microsecond(stats_total_time_to_search), stats_total_time_to_search);
+printf("Accumulator initialisation per query : %10llu us (%llu ticks)\n", timer_ticks_to_microseconds(stats_accumulator_time / total_number_of_topics), stats_accumulator_time / total_number_of_topics);
+printf("Vocabulary lookup per query          : %10llu us (%llu ticks)\n", timer_ticks_to_microseconds(stats_vocab_time / total_number_of_topics), stats_vocab_time / total_number_of_topics);
+printf("Process postings per query           : %10llu us (%llu ticks)\n", timer_ticks_to_microseconds(stats_postings_time / total_number_of_topics), stats_postings_time / total_number_of_topics);
+printf("Order the top-k per query            : %10llu us (%llu ticks)\n", timer_ticks_to_microseconds(stats_sort_time / total_number_of_topics), stats_sort_time / total_number_of_topics);
+printf("Total time excluding I/O per query   : %10llu us (%llu ticks)\n", timer_ticks_to_microseconds(stats_total_time_to_search_without_io / total_number_of_topics), stats_total_time_to_search_without_io / total_number_of_topics);
+printf("Total run time                       : %10llu us (%llu ticks)\n", timer_ticks_to_microseconds(stats_total_time_to_search), stats_total_time_to_search);
 
 return 0;
 }
