@@ -10,11 +10,13 @@
 #include <string.h>
 #include <sys/stat.h>
 
-uint32_t seperate_files = true;									// set this to false to get all the postings into a single file
+uint32_t seperate_files = false;									// set this to false to get all the postings into a single file
 static char buffer[1024 * 1024 * 1024];
 
 char *termlist[1024 * 1024];
 uint32_t termlist_length = 0;
+
+#define TERMS_PER_SOURCE_CODE_FILE 1000					/* when compiling everything (seperate_files = false) put this numnber of terms in each source code file */
 
 /*
 	STRING_COMPARE()
@@ -58,19 +60,13 @@ FILE *open_postings_dot_c(char *term)
 FILE *postings_dot_c;
 char buffer[1024];
 
-if (term == NULL)
-	sprintf(buffer, "CIpostings.c");
-else
-	sprintf(buffer, "CIpostings/CIt_%s.c", term);
+sprintf(buffer, "CIpostings/CIt_%s.c", term);
 if ((postings_dot_c = fopen(buffer, "wb")) == NULL)
 	exit(printf("Cannot open '%s' output file\n", buffer));
 
 fprintf(postings_dot_c, "#include <stdint.h>\n");
 
-if (term == NULL)
-	fprintf(postings_dot_c, "#include \"CI.h\"\n\n");
-else
-	fprintf(postings_dot_c, "#include \"../CI.h\"\n\n");
+fprintf(postings_dot_c, "#include \"../CI.h\"\n\n");
 
 return postings_dot_c;
 }
@@ -95,12 +91,21 @@ uint64_t line = 0;
 uint64_t cf, df, docid, impact, first_time = true, max_docid = 0, max_q = 0;
 FILE *fp, *vocab_dot_c, *postings_dot_c, *postings_dot_h, *doclist, *doclist_dot_c, *makefile, *makefile_include;
 uint32_t include_postings;
+uint64_t positings_file_number = 0;
 
 if (argc != 3 && argc != 4)
 	exit(printf("Usage: %s <index.dump> <docid.aspt> [<topicfile>]\nGenerate index.dump with atire_dictionary > index.dump\nGeneratedocid.aspt with atire_doclist\nGenerate <topicfile> with trec2query <trectopicfile> t\n", argv[0]));
 
 if (argc == 4)
+	{
+	/*
+		If the user gives me a <topicfile> then put each term into a seperate file.
+	*/
+	seperate_files = true;
 	load_topic_file(argv[3]);
+	}
+else
+	seperate_files = false;
 
 if ((fp = fopen(argv[1], "rb")) == NULL)
 	exit(printf("Cannot open input file '%s'\n", argv[1]));
@@ -141,20 +146,15 @@ fprintf(vocab_dot_c, "#include \"CI.h\"\n");
 fprintf(vocab_dot_c, "#include \"CIpostings.h\"\n\n");
 fprintf(vocab_dot_c, "CI_vocab CI_dictionary[] =\n{\n");
 
-if (seperate_files)
-	{
-	mkdir("CIpostings", S_IRUSR | S_IWUSR | S_IXUSR | S_IRGRP | S_IXGRP | S_IROTH | S_IXOTH);
+postings_dot_c = NULL;
+mkdir("CIpostings", S_IRUSR | S_IWUSR | S_IXUSR | S_IRGRP | S_IXGRP | S_IROTH | S_IXOTH);
+if ((makefile = fopen("CIpostings/makefile", "wb")) == NULL)
+	exit(printf("Cannot open 'CIpostings/makefile' output file\n"));
+fprintf(makefile, "include makefile.include\n\nCI_FLAGS = -c\n\n");
 
-	if ((makefile = fopen("CIpostings/makefile", "wb")) == NULL)
-		exit(printf("Cannot open 'CIpostings/makefile' output file\n"));
-	fprintf(makefile, "include makefile.include\n\nCI_FLAGS = -c\n\n");
-
-	if ((makefile_include = fopen("CIpostings/makefile.include", "wb")) == NULL)
-		exit(printf("Cannot open 'CIpostings/makefile.include' output file\n"));
-	fprintf(makefile_include, "../CIpostings.o : ");
-	}
-else
-	postings_dot_c = open_postings_dot_c(NULL);
+if ((makefile_include = fopen("CIpostings/makefile.include", "wb")) == NULL)
+	exit(printf("Cannot open 'CIpostings/makefile.include' output file\n"));
+fprintf(makefile_include, "../CIpostings.o : ");
 
 if ((postings_dot_h = fopen("CIpostings.h", "wb")) == NULL)
 	exit(printf("Cannot open CIpostings.h output file\n"));
@@ -205,9 +205,23 @@ while (fgets(buffer, sizeof(buffer), fp) != NULL)
 						fprintf(makefile, "CIt_%s.o : CIt_%s.c\n\t $(CXX) $(CXXFLAGS) $(CI_FLAGS) CIt_%s.c\n\n", buffer, buffer, buffer);
 						fprintf(makefile_include, " CIt_%s.o", buffer);
 						}
+					else if (((line - 1)% TERMS_PER_SOURCE_CODE_FILE) == 0)
+						{
+						char filename[1024];
+
+						sprintf(filename, "%llu", positings_file_number);
+						positings_file_number++;
+						if (postings_dot_c != NULL)
+							close_postings_dot_c(postings_dot_c);
+						postings_dot_c = open_postings_dot_c(filename);
+
+						fprintf(makefile, "CIt_%llu.o : CIt_%llu.c\n\t $(CXX) $(CXXFLAGS) $(CI_FLAGS) CIt_%llu.c\n\n", positings_file_number, positings_file_number, positings_file_number);
+						fprintf(makefile_include, " CIt_%llu.o", positings_file_number);
+						}
 
 					fprintf(postings_dot_h, "void CIt_%s(void);\n", buffer);
 					fprintf(postings_dot_c, "void CIt_%s(void)\n{\n", buffer);
+
 					while (end_of_term != NULL)
 						if ((end_of_term = strchr(end_of_term, '<')) != NULL)
 							{
@@ -241,16 +255,13 @@ fprintf(vocab_dot_c, "uint32_t CI_max_q = %llu;\n", max_q);
 fclose(vocab_dot_c);
 fclose(fp);
 
-if (seperate_files)
-	{
-	fclose(makefile);
+fclose(makefile);
+fprintf(makefile_include, "\n\tld -r CIt_*.o -o ../CIpostings.o\n\n");
+fclose(makefile_include);
 
-	fprintf(makefile_include, "\n\tld -r CIt_*.o -o ../CIpostings.o\n\n");
-
-	fclose(makefile_include);
-	}
-else
-	close_postings_dot_c(postings_dot_c);
+if (!seperate_files)
+	if (postings_dot_c != NULL)
+		close_postings_dot_c(postings_dot_c);
 
 return 0;
 }

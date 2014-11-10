@@ -114,6 +114,8 @@ uint64_t stats_total_time_to_search;
 uint64_t stats_total_time_to_search_without_io;
 uint32_t accumulators_needed;
 uint64_t experimental_repeat = 0, times_to_repeat_experiment = 2;
+uint64_t zz;
+
 
 if (argc != 2 && argc != 3)
 	exit(printf("Usage:%s <queryfile> [<top-k-number>]\n", argv[0]));
@@ -124,6 +126,7 @@ if ((fp = fopen(argv[1], "r")) == NULL)
 if ((out = fopen("ranking.txt", "w")) == NULL )
   exit(printf("Can't open output file.\n"));
 
+printf("Docs:%u\n", CI_unique_documents);
 /*
 	Compute the details of the accumulator table
 */
@@ -154,6 +157,7 @@ while (experimental_repeat < times_to_repeat_experiment)
 	stats_total_time_to_search = 0;
 	stats_total_time_to_search_without_io = 0;
 	total_number_of_topics = 0;
+	zz = 0;
 
 	rewind(fp);
 	rewind(out);
@@ -178,6 +182,10 @@ while (experimental_repeat < times_to_repeat_experiment)
 		timer = timer_start();
 		memset(CI_accumulator_clean_flags, 0, CI_accumulators_height);
 		stats_accumulator_time += timer_stop(timer);
+
+		timer = timer_start();
+		memset(CI_accumulators, 0, CI_unique_documents * sizeof(*CI_accumulators));
+		zz += timer_stop(timer);
 
 		/*
 			For each term, call the method to update the accumulators
@@ -224,6 +232,7 @@ print_os_time();
 
 printf("Averages over %llu queries\n", total_number_of_topics);
 printf("Accumulator initialisation per query : %10llu us (%llu ticks)\n", timer_ticks_per_microsecond(stats_accumulator_time / total_number_of_topics), stats_accumulator_time / total_number_of_topics);
+printf("Accumulator initialisation avoided : %10llu us (%llu ticks)\n", timer_ticks_per_microsecond(zz / total_number_of_topics), zz / total_number_of_topics);
 printf("Vocabulary lookup per query          : %10llu us (%llu ticks)\n", timer_ticks_per_microsecond(stats_vocab_time / total_number_of_topics), stats_vocab_time / total_number_of_topics);
 printf("Process postings per query           : %10llu us (%llu ticks)\n", timer_ticks_per_microsecond(stats_postings_time / total_number_of_topics), stats_postings_time / total_number_of_topics);
 printf("Order the top-k per query            : %10llu us (%llu ticks)\n", timer_ticks_per_microsecond(stats_sort_time / total_number_of_topics), stats_sort_time / total_number_of_topics);
