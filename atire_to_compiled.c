@@ -103,7 +103,7 @@ uint64_t cf, df, docid, impact, first_time = true, max_docid = 0, max_q = 0;
 FILE *fp, *vocab_dot_c, *postings_dot_c, *postings_dot_h, *doclist, *doclist_dot_c, *makefile, *makefile_include;
 uint32_t include_postings;
 uint64_t positings_file_number = 0;
-uint64_t previous_impact, impacts_for_this_term, which_impact;
+uint64_t previous_impact, impacts_for_this_term, which_impact, unique_terms_in_index = 0;
 
 if (argc != 3 && argc != 4)
 	exit(printf("Usage: %s <index.dump> <docid.aspt> [<topicfile>]\nGenerate index.dump with atire_dictionary > index.dump\nGeneratedocid.aspt with atire_doclist\nGenerate <topicfile> with trec2query <trectopicfile> t\n", argv[0]));
@@ -256,7 +256,7 @@ while (fgets(buffer, sizeof(buffer), fp) != NULL)
 								{
 								if (previous_impact == ULONG_MAX)
 									{
-									fprintf(postings_dot_h, "extern struct CI_impact_method **CIt_ip_%s;\n", buffer);
+									fprintf(postings_dot_h, "extern struct CI_impact_method *CIt_ip_%s[];\n", buffer);
 									term_method_list << "static struct CI_impact_method CIt_i_" << buffer << "[] =\n{\n";
 									}
 								else
@@ -289,6 +289,7 @@ while (fgets(buffer, sizeof(buffer), fp) != NULL)
 				{
 				fprintf(vocab_dot_c, "{\"%s\", CIt_ip_%s, %llu}", buffer, buffer, impacts_for_this_term);			// add to the vocab c file
 				first_time = false;
+				unique_terms_in_index++;
 				}
 			else
 				{
@@ -300,7 +301,7 @@ while (fgets(buffer, sizeof(buffer), fp) != NULL)
 	}
 
 fprintf(vocab_dot_c, "\n};\n\n");
-fprintf(vocab_dot_c, "uint32_t CI_unique_terms = %llu;\n", line);
+fprintf(vocab_dot_c, "uint32_t CI_unique_terms = %llu;\n", unique_terms_in_index);
 fprintf(vocab_dot_c, "uint32_t CI_unique_documents = %llu;\n", max_docid + 1);			// +1 because we count from zero
 fprintf(vocab_dot_c, "uint32_t CI_max_q = %llu;\n", max_q);
 
