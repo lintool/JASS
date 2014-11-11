@@ -386,7 +386,7 @@ while (experimental_repeat < times_to_repeat_experiment)
 				early_terminate = true;
 
 				for (partial_rsv = quantum_check_pointers; partial_rsv < quantum_check_pointers + CI_top_k - 1; partial_rsv++)
-					if (*partial_rsv - *(partial_rsv + 1) < max_remaining_impact)		// We're sorted from largest to smallest so a[x] - a[x+1] >= 0
+					if (**partial_rsv - **(partial_rsv + 1) < max_remaining_impact)		// We're sorted from largest to smallest so a[x] - a[x+1] >= 0
 						{
 						early_terminate = false;
 						break;
