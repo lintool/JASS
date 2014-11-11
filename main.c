@@ -284,8 +284,11 @@ while (experimental_repeat < times_to_repeat_experiment)
 			if (postings_list != NULL)
 				{
 				timer = timer_start();
-				for (void (**method)(void) = postings_list->methods; *method != NULL; method++)
-					(*method)();
+				for ( struct CI_impact_method **method = postings_list->methods; (*method)->impact != 0; method++)
+					{
+					puts("Call");
+					(*(*method)->method)();
+					}
 				stats_postings_time += timer_stop(timer);
 				}
 			}

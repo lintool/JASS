@@ -11,6 +11,16 @@
 #include "heap.h"
 
 /*
+	struct CI_IMPACT_METHOD
+	-----------------------
+*/
+struct CI_impact_method
+{
+uint16_t impact;
+void (*method)(void);
+} ;
+
+/*
 	class CI_VOCAB
 	--------------
 */
@@ -18,7 +28,7 @@ class CI_vocab
 {
 public:
 	const char *term;
-	void (**methods)(void);
+	struct CI_impact_method **methods;
 	uint64_t impacts;
 
 public:

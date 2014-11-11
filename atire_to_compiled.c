@@ -103,7 +103,7 @@ uint64_t cf, df, docid, impact, first_time = true, max_docid = 0, max_q = 0;
 FILE *fp, *vocab_dot_c, *postings_dot_c, *postings_dot_h, *doclist, *doclist_dot_c, *makefile, *makefile_include;
 uint32_t include_postings;
 uint64_t positings_file_number = 0;
-uint64_t previous_impact, impacts_for_this_term;
+uint64_t previous_impact, impacts_for_this_term, which_impact;
 
 if (argc != 3 && argc != 4)
 	exit(printf("Usage: %s <index.dump> <docid.aspt> [<topicfile>]\nGenerate index.dump with atire_dictionary > index.dump\nGeneratedocid.aspt with atire_doclist\nGenerate <topicfile> with trec2query <trectopicfile> t\n", argv[0]));
@@ -256,39 +256,45 @@ while (fgets(buffer, sizeof(buffer), fp) != NULL)
 								{
 								if (previous_impact == ULONG_MAX)
 									{
-									fprintf(postings_dot_h, "extern void (*CIt_i_%s[])(void);\n", buffer);
-									term_method_list << "void (*CIt_i_" << buffer << "[])(void) =\n{\n";
+									fprintf(postings_dot_h, "extern struct CI_impact_method **CIt_ip_%s;\n", buffer);
+									term_method_list << "static struct CI_impact_method CIt_i_" << buffer << "[] =\n{\n";
 									}
 								else
 									fprintf(postings_dot_c, "}\n\n");
 
 								fprintf(postings_dot_c, "static void CIt_%s_i_%llu(void)\n{\n", buffer, impact);
-								term_method_list << "CIt_" << buffer << "_i_" << impact << ",\n";
+								term_method_list << "{" << impact << ", CIt_" << buffer << "_i_" << impact << "},\n";
 								previous_impact = impact;
 								impacts_for_this_term++;
 								}
 							fprintf(postings_dot_c, "add_rsv(%llu, %llu);\n", docid, impact);
 							}
 					fprintf(postings_dot_c, "}\n\n");
+					fprintf(postings_dot_c, "%s{0,0}\n};\n", term_method_list.str().c_str());
 
-					fprintf(postings_dot_c, "%s0\n};\n", term_method_list.str().c_str());
+					fprintf(postings_dot_c, "struct CI_impact_method *CIt_ip_%s[] = \n{\n", buffer);
+					for (which_impact = 0; which_impact <= impacts_for_this_term; which_impact++)
+						fprintf(postings_dot_c, "CIt_i_%s + %llu,\n", buffer, which_impact);
+					fprintf(postings_dot_c, "};\n");
+
 					if (seperate_files)
 						close_postings_dot_c(postings_dot_c);
 					}
 				}
-			if (first_time)
-				{
+			if (!first_time)
 				if (include_postings)
-					fprintf(vocab_dot_c, "{\"%s\", CIt_i_%s, %llu}", buffer, buffer, impacts_for_this_term);			// add to the vocab c file
-//				else
-//					fprintf(vocab_dot_c, "{\"%s\", 0, %llu}", buffer, impacts_for_this_term);			// add to the vocab c file
+					fprintf(vocab_dot_c, ",\n");			// add to the vocab c file
+
+			if (include_postings)
+				{
+				fprintf(vocab_dot_c, "{\"%s\", CIt_ip_%s, %llu}", buffer, buffer, impacts_for_this_term);			// add to the vocab c file
 				first_time = false;
 				}
 			else
-				if (include_postings)
-					fprintf(vocab_dot_c, ",\n{\"%s\", CIt_i_%s, %llu}", buffer, buffer, impacts_for_this_term);			// add to the vocab c file
-//				else
-//					fprintf(vocab_dot_c, ",\n{\"%s\", 0, %llu}", buffer, impacts_for_this_term);			// add to the vocab c file
+				{
+//				fprintf(vocab_dot_c, "{\"%s\", 0, %llu}", buffer, impacts_for_this_term);			// add to the vocab c file
+//				first_time = false;
+				}
 			}
 		}
 	}
