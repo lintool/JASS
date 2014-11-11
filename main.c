@@ -380,22 +380,24 @@ while (experimental_repeat < times_to_repeat_experiment)
 					2. sort the top k + 1
 					3. go through consequative rsvs checking to see if reordering is possible (check rsv[k] - rsv[k + 1])
 				*/
-				memcpy(quantum_check_pointers, CI_accumulator_pointers, CI_results_list_length * sizeof(*quantum_check_pointers));
-				top_k_qsort(quantum_check_pointers, CI_results_list_length, CI_top_k);
+				memcpy(quantum_check_pointers, CI_accumulator_pointers, CI_top_k * sizeof(*quantum_check_pointers));
+				top_k_qsort(quantum_check_pointers, CI_top_k, CI_top_k);
 
 				early_terminate = true;
 
 				for (partial_rsv = quantum_check_pointers; partial_rsv < quantum_check_pointers + CI_top_k - 1; partial_rsv++)
 					if (*partial_rsv - *(partial_rsv + 1) < max_remaining_impact)		// We're sorted from largest to smallest so a[x] - a[x+1] >= 0
 						{
-						stats_early_terminations++;
 						early_terminate = false;
 						break;
 						}
 				}
 			stats_early_terminate_check_time += timer_stop(timer);
 			if (early_terminate)
+				{
+				stats_early_terminations++;
 				break;
+				}
 			}
 
 		/*
