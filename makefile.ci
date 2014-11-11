@@ -1,5 +1,5 @@
 main : main.c CIpostings.o CIvocab.c CIdoclist.c CI.c CI.h CIpostings.h
-	g++ -O3 -o main main.c CIpostings.o CIvocab.c CIdoclist.c CI.c
+	g++ -o main CIpostings.o -x c++ -O3 main.c CIvocab.c CIdoclist.c CI.c
 
 
 CIpostings.o : CIpostings/makefile

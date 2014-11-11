@@ -20,6 +20,9 @@
 
 #include "CI.h"
 
+#define MAX_TERMS_PER_QUERY 10
+#define MAX_QUANTUM 0xFF
+
 uint16_t *CI_accumulators;
 uint16_t **CI_accumulator_pointers;
 uint32_t CI_top_k;
@@ -206,7 +209,7 @@ uint64_t stats_total_time_to_search;
 uint64_t stats_total_time_to_search_without_io;
 uint32_t accumulators_needed;
 uint64_t experimental_repeat = 0, times_to_repeat_experiment = 2;
-
+struct CI_impact_method **quantum_order, **current_quantum;
 
 if (argc != 2 && argc != 3)
 	exit(printf("Usage:%s <queryfile> [<top-k-number>]\n", argv[0]));
@@ -218,6 +221,7 @@ if ((out = fopen("ranking.txt", "w")) == NULL )
   exit(printf("Can't open output file.\n"));
 
 printf("Docs:%u\n", CI_unique_documents);
+
 /*
 	Compute the details of the accumulator table
 */
@@ -234,6 +238,11 @@ CI_accumulators = new uint16_t[accumulators_needed];
 CI_accumulator_pointers = new uint16_t * [accumulators_needed];
 CI_top_k = argc == 2 ? CI_unique_documents + 1 : atoll(argv[2]);
 CI_heap = new ANT_heap<uint16_t *, add_rsv_compare>(*CI_accumulator_pointers, CI_top_k);
+
+/*
+	Allocate the quantum at a time table
+*/
+quantum_order = new struct CI_impact_method *[MAX_TERMS_PER_QUERY * MAX_QUANTUM];
 
 /*
 	Now start searching
@@ -274,20 +283,34 @@ while (experimental_repeat < times_to_repeat_experiment)
 		stats_accumulator_time += timer_stop(timer);
 
 		/*
-			For each term, call the method to update the accumulators
+			For each term, drag out the pointer list and add it to the list of quantums to process
 		*/
+		current_quantum = quantum_order;
 		while ((term = strtok(NULL, SEPERATORS)) != NULL)
 			{
 			timer = timer_start();
 			postings_list = (CI_vocab *)bsearch(term, CI_dictionary, CI_unique_terms, sizeof(*CI_dictionary), CI_vocab::compare_string);
 			stats_vocab_time += timer_stop(timer);
-			if (postings_list != NULL)
-				{
-				timer = timer_start();
-				for (struct CI_impact_method **method = (struct CI_impact_method **)postings_list->methods; (*method)->impact != 0; method++)
-					(*(*method)->method)();
-				stats_postings_time += timer_stop(timer);
-				}
+
+			/*
+				Copy this term's pointes to the quantum list
+			*/
+			memcpy(current_quantum, postings_list->methods, postings_list->impacts * sizeof(*quantum_order));
+			current_quantum += postings_list->impacts;
+			}
+		/*
+			NULL termainate the list of quantums
+		*/
+		*current_quantum = NULL;
+
+		/*
+			Now process each quantum, one at a time
+		*/
+		for (current_quantum = quantum_order; *current_quantum != NULL; current_quantum++)
+			{
+			timer = timer_start();
+			(*(*current_quantum)->method)();
+			stats_postings_time += timer_stop(timer);
 			}
 
 		/*

@@ -1,5 +1,5 @@
 atire_to_compiled : atire_to_compiled.c
-	g++ atire_to_compiled.c -o atire_to_compiled
+	g++ -x c++ atire_to_compiled.c -o atire_to_compiled
 
 
 clean:

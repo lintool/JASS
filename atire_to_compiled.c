@@ -165,7 +165,7 @@ if ((makefile = fopen("CIpostings/makefile", "wb")) == NULL)
 #ifdef _MSC_VER
 	fprintf(makefile, "include makefile.include\n\nCI_FLAGS = -c /Tp\n\n");
 #else
-	fprintf(makefile, "include makefile.include\n\nCI_FLAGS = -c\n\n");
+	fprintf(makefile, "include makefile.include\n\nCI_FLAGS = -x c++ -c\n\n");
 #endif
 
 if ((makefile_include = fopen("CIpostings/makefile.include", "wb")) == NULL)
