@@ -256,7 +256,7 @@ while (fgets(buffer, sizeof(buffer), fp) != NULL)
 								{
 								if (previous_impact == ULONG_MAX)
 									{
-									fprintf(postings_dot_h, "extern struct CI_impact_method *CIt_ip_%s[];\n", buffer);
+									fprintf(postings_dot_h, "extern void *CIt_ip_%s[];\n", buffer);
 									term_method_list << "static struct CI_impact_method CIt_i_" << buffer << "[] =\n{\n";
 									}
 								else
@@ -272,7 +272,7 @@ while (fgets(buffer, sizeof(buffer), fp) != NULL)
 					fprintf(postings_dot_c, "}\n\n");
 					fprintf(postings_dot_c, "%s{0,0}\n};\n", term_method_list.str().c_str());
 
-					fprintf(postings_dot_c, "struct CI_impact_method *CIt_ip_%s[] = \n{\n", buffer);
+					fprintf(postings_dot_c, "void *CIt_ip_%s[] = \n{\n", buffer);
 					for (which_impact = 0; which_impact <= impacts_for_this_term; which_impact++)
 						fprintf(postings_dot_c, "CIt_i_%s + %llu,\n", buffer, which_impact);
 					fprintf(postings_dot_c, "};\n");

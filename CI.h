@@ -28,8 +28,8 @@ class CI_vocab
 {
 public:
 	const char *term;
-//	void **methods;
-	struct CI_impact_method **methods;
+	void **methods;
+//	struct CI_impact_method **methods;
 	uint64_t impacts;
 
 public:
