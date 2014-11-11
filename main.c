@@ -186,6 +186,18 @@ for (current = 0; current < CI_results_list_length; current++)
 }
 
 /*
+	QUANTUM_COMPARE()
+	-----------------
+*/
+int quantum_compare(const void *a, const void *b)
+{
+CI_impact_method **lhs = (CI_impact_method **)a;
+CI_impact_method **rhs = (CI_impact_method **)b;
+
+return (*lhs)->impact < (*rhs)->impact ? 1 : (*lhs)->impact == (*rhs)->impact ? 0 : -1;
+}
+
+/*
 	MAIN()
 	------
 */
@@ -208,8 +220,14 @@ uint64_t total_number_of_topics;
 uint64_t stats_total_time_to_search;
 uint64_t stats_total_time_to_search_without_io;
 uint32_t accumulators_needed;
+uint64_t stats_quantum_prep_time;
+uint64_t stats_early_terminate_check_time;
 uint64_t experimental_repeat = 0, times_to_repeat_experiment = 2;
 struct CI_impact_method **quantum_order, **current_quantum;
+uint64_t max_remaining_impact;
+uint16_t **quantum_check_pointers;
+uint64_t early_terminate;
+uint16_t **partial_rsv;
 
 if (argc != 2 && argc != 3)
 	exit(printf("Usage:%s <queryfile> [<top-k-number>]\n", argv[0]));
@@ -219,8 +237,6 @@ if ((fp = fopen(argv[1], "r")) == NULL)
 
 if ((out = fopen("ranking.txt", "w")) == NULL )
   exit(printf("Can't open output file.\n"));
-
-printf("Docs:%u\n", CI_unique_documents);
 
 /*
 	Compute the details of the accumulator table
@@ -243,6 +259,7 @@ CI_heap = new ANT_heap<uint16_t *, add_rsv_compare>(*CI_accumulator_pointers, CI
 	Allocate the quantum at a time table
 */
 quantum_order = new struct CI_impact_method *[MAX_TERMS_PER_QUERY * MAX_QUANTUM];
+quantum_check_pointers = new uint16_t * [accumulators_needed];
 
 /*
 	Now start searching
@@ -257,6 +274,8 @@ while (experimental_repeat < times_to_repeat_experiment)
 	stats_total_time_to_search = 0;
 	stats_total_time_to_search_without_io = 0;
 	total_number_of_topics = 0;
+	stats_quantum_prep_time = 0;
+	stats_early_terminate_check_time = 0;
 
 	rewind(fp);
 	rewind(out);
@@ -285,7 +304,10 @@ while (experimental_repeat < times_to_repeat_experiment)
 		/*
 			For each term, drag out the pointer list and add it to the list of quantums to process
 		*/
+		max_remaining_impact = 0;
 		current_quantum = quantum_order;
+		early_terminate = false;
+
 		while ((term = strtok(NULL, SEPERATORS)) != NULL)
 			{
 			timer = timer_start();
@@ -293,15 +315,38 @@ while (experimental_repeat < times_to_repeat_experiment)
 			stats_vocab_time += timer_stop(timer);
 
 			/*
-				Copy this term's pointes to the quantum list
+				Initialise the QaaT (Quantum at a Time) structures
 			*/
-			memcpy(current_quantum, postings_list->methods, postings_list->impacts * sizeof(*quantum_order));
-			current_quantum += postings_list->impacts;
+			timer = timer_start();
+			if (postings_list != NULL)
+				{
+				/*
+					Copy this term's pointes to the quantum list
+				*/
+				memcpy(current_quantum, postings_list->methods, postings_list->impacts * sizeof(*quantum_order));
+
+				/*
+					Compute the maximum possibe impact score (that is, assume one document has the maximum impact of each term)
+				*/
+				max_remaining_impact += (*current_quantum)->impact;
+
+				/*
+					Advance to the place we want to place the next quantum set
+				*/
+				current_quantum += postings_list->impacts;
+				}
 			}
 		/*
 			NULL termainate the list of quantums
 		*/
 		*current_quantum = NULL;
+
+		/*
+			Sort the quantum list from highest to lowest
+		*/
+		qsort(quantum_order, current_quantum - quantum_order, sizeof(*quantum_order), quantum_compare);
+
+		stats_quantum_prep_time += timer_stop(timer);
 
 		/*
 			Now process each quantum, one at a time
@@ -311,6 +356,38 @@ while (experimental_repeat < times_to_repeat_experiment)
 			timer = timer_start();
 			(*(*current_quantum)->method)();
 			stats_postings_time += timer_stop(timer);
+
+			/*
+				Check to see if its posible for the remaining impacts to affect the order of the top-k
+			*/
+			timer = timer_start();
+			/*
+				Subtract the current impact score and then add the next impact score for the current term
+			*/
+			max_remaining_impact -= (*current_quantum)->impact;
+			max_remaining_impact += ((*current_quantum) + 1)->impact;
+
+			if (CI_results_list_length > CI_top_k)
+				{
+				/*
+					We need to run through the top-(k+1) to see if its possible for any re-ordering to occur
+					1. copy the accumulators;
+					2. sort the top k + 1
+					3. go through consequative rsvs checking to see if reordering is possible (check rsv[k] - rsv[k + 1])
+				*/
+				memcpy(quantum_check_pointers, CI_accumulator_pointers, CI_results_list_length);
+				top_k_qsort(quantum_check_pointers, CI_results_list_length, CI_top_k + 1);
+
+				for (partial_rsv = quantum_check_pointers; partial_rsv < quantum_check_pointers + CI_top_k; partial_rsv++)
+					if (*(partial_rsv + 1) - *partial_rsv < max_remaining_impact)
+						{
+						early_terminate = true;
+						break;
+						}
+				}
+			stats_early_terminate_check_time += timer_stop(timer);
+			if (early_terminate)
+				break;
 			}
 
 		/*
@@ -343,7 +420,9 @@ print_os_time();
 printf("Averages over %llu queries\n", total_number_of_topics);
 printf("Accumulator initialisation per query : %10llu us (%llu ticks)\n", timer_ticks_to_microseconds(stats_accumulator_time / total_number_of_topics), stats_accumulator_time / total_number_of_topics);
 printf("Vocabulary lookup per query          : %10llu us (%llu ticks)\n", timer_ticks_to_microseconds(stats_vocab_time / total_number_of_topics), stats_vocab_time / total_number_of_topics);
+printf("QaaT prep time per query             : %10llu us (%llu ticks)\n", timer_ticks_to_microseconds(stats_quantum_prep_time / total_number_of_topics), stats_quantum_prep_time / total_number_of_topics);
 printf("Process postings per query           : %10llu us (%llu ticks)\n", timer_ticks_to_microseconds(stats_postings_time / total_number_of_topics), stats_postings_time / total_number_of_topics);
+printf("QaaT early terminate check per query : %10llu us (%llu ticks)\n", timer_ticks_to_microseconds(stats_early_terminate_check_time / total_number_of_topics), stats_early_terminate_check_time / total_number_of_topics);
 printf("Order the top-k per query            : %10llu us (%llu ticks)\n", timer_ticks_to_microseconds(stats_sort_time / total_number_of_topics), stats_sort_time / total_number_of_topics);
 printf("Total time excluding I/O per query   : %10llu us (%llu ticks)\n", timer_ticks_to_microseconds(stats_total_time_to_search_without_io / total_number_of_topics), stats_total_time_to_search_without_io / total_number_of_topics);
 printf("Total run time                       : %10llu us (%llu ticks)\n", timer_ticks_to_microseconds(stats_total_time_to_search), stats_total_time_to_search);
