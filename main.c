@@ -221,7 +221,7 @@ uint64_t stats_total_time_to_search;
 uint64_t stats_total_time_to_search_without_io;
 uint32_t accumulators_needed;
 uint64_t stats_quantum_prep_time;
-uint64_t stats_early_terminate_check_time, stats_quantum_check_count, stats_quantum_count;
+uint64_t stats_early_terminate_check_time, stats_quantum_check_count, stats_quantum_count, stats_early_terminations;
 uint64_t experimental_repeat = 0, times_to_repeat_experiment = 2;
 struct CI_impact_method **quantum_order, **current_quantum;
 uint64_t max_remaining_impact;
@@ -278,6 +278,7 @@ while (experimental_repeat < times_to_repeat_experiment)
 	stats_early_terminate_check_time = 0;
 	stats_quantum_check_count = 0;
 	stats_quantum_count = 0;
+	stats_early_terminations = 0;
 
 	rewind(fp);
 	rewind(out);
@@ -379,14 +380,15 @@ while (experimental_repeat < times_to_repeat_experiment)
 					2. sort the top k + 1
 					3. go through consequative rsvs checking to see if reordering is possible (check rsv[k] - rsv[k + 1])
 				*/
-				memcpy(quantum_check_pointers, CI_accumulator_pointers, CI_results_list_length);
-				top_k_qsort(quantum_check_pointers, CI_results_list_length, CI_top_k + 1);
+				memcpy(quantum_check_pointers, CI_accumulator_pointers, CI_results_list_length * sizeof(*quantum_check_pointers));
+				top_k_qsort(quantum_check_pointers, CI_results_list_length, CI_top_k);
 
 				early_terminate = true;
 
 				for (partial_rsv = quantum_check_pointers; partial_rsv < quantum_check_pointers + CI_top_k - 1; partial_rsv++)
 					if (*partial_rsv - *(partial_rsv + 1) < max_remaining_impact)		// We're sorted from largest to smallest so a[x] - a[x+1] >= 0
 						{
+						stats_early_terminations++;
 						early_terminate = false;
 						break;
 						}
@@ -434,6 +436,7 @@ printf("Total time excluding I/O per query   : %10llu us (%llu ticks)\n", timer_
 printf("Total run time                       : %10llu us (%llu ticks)\n", timer_ticks_to_microseconds(stats_total_time_to_search), stats_total_time_to_search);
 
 printf("Total number of QaaT early terminate checks : %10llu\n", stats_quantum_check_count);
+printf("Total number of QaaT early terminations     : %10llu\n", stats_early_terminations);
 printf("Total number of quantums processed          : %10llu\n", stats_quantum_count);
 
 return 0;
