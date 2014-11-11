@@ -170,15 +170,11 @@ void print_os_time(void)
 	TREC_DUMP_RESULTS()
 	-------------------
 */
-void trec_dump_results(uint32_t topic_id, FILE *out)
+void trec_dump_results(uint32_t topic_id, FILE *out, uint32_t output_length)
 {
 uint32_t current, id;
-uint32_t output_length;
 
-output_length = CI_results_list_length < 10 ? CI_results_list_length : 10;			// at most 10 results will be printed per query
-output_length = CI_results_list_length;														// uncomment this line to print all the results into the TREC resuls file
-
-for (current = 0; current < CI_results_list_length; current++)
+for (current = 0; current < (output_length < CI_results_list_length ? output_length : CI_results_list_length); current++)
 	{
 	id = CI_accumulator_pointers[current] - CI_accumulators;
 	fprintf(out, "%d Q0 %s %d %d COMPILED (ID:%u)\n", topic_id, CI_doclist[id], current + 1, CI_accumulators[id], id);
@@ -253,6 +249,11 @@ CI_accumulator_clean_flags = new uint8_t[CI_accumulators_height];
 CI_accumulators = new uint16_t[accumulators_needed];
 CI_accumulator_pointers = new uint16_t * [accumulators_needed];
 CI_top_k = argc == 2 ? CI_unique_documents + 1 : atoll(argv[2]);
+
+/*
+	For QaaT early termination we need K+1 elements in the heap so that we can check that nothing else can get into the top-k.
+*/
+CI_top_k++;
 CI_heap = new ANT_heap<uint16_t *, add_rsv_compare>(*CI_accumulator_pointers, CI_top_k);
 
 /*
@@ -417,7 +418,7 @@ while (experimental_repeat < times_to_repeat_experiment)
 		/*
 			Creat a TREC run file as output
 		*/
-		trec_dump_results(query_id, out);
+		trec_dump_results(query_id, out, CI_top_k - 1);		// subtract 1 from top_k because we added 1 for the early termination checks
 		}
 	}
 
