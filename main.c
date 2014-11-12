@@ -381,8 +381,13 @@ while (experimental_repeat < times_to_repeat_experiment)
 					2. sort the top k + 1
 					3. go through consequative rsvs checking to see if reordering is possible (check rsv[k] - rsv[k + 1])
 				*/
-				memcpy(quantum_check_pointers, CI_accumulator_pointers, CI_top_k * sizeof(*quantum_check_pointers));
-				top_k_qsort(quantum_check_pointers, CI_top_k, CI_top_k);
+				#ifdef QAAT_NO_HEAP
+					memcpy(quantum_check_pointers, CI_accumulator_pointers, CI_results_list_length * sizeof(*quantum_check_pointers));
+					top_k_qsort(quantum_check_pointers, CI_results_list_length, CI_top_k);
+				#else
+					memcpy(quantum_check_pointers, CI_accumulator_pointers, CI_top_k * sizeof(*quantum_check_pointers));
+					top_k_qsort(quantum_check_pointers, CI_top_k, CI_top_k);
+				#endif
 
 				early_terminate = true;
 
@@ -405,7 +410,7 @@ while (experimental_repeat < times_to_repeat_experiment)
 			sort the accumulator pointers to put the highest RSV document at the top of the list
 		*/
 		timer = timer_start();
-		top_k_qsort(CI_accumulator_pointers, CI_results_list_length, CI_top_k);
+		top_k_qsort(CI_accumulator_pointers, CI_results_list_length, CI_top_k - 1);
 		stats_sort_time += timer_stop(timer);
 
 		/*

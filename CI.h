@@ -2,13 +2,23 @@
 	CI.H
 	----
 */
-
 #ifndef CI_H_
 #define CI_H_
+
+/*
+	If you define QAAT_NO_HEAP then the heap is not used and the QaaT early termination code must check the entire
+	CI_acumulator_pointers array to determine whether or not it can termainate early.  This makes the program slower
+	on the experimental dataset.
+*/
+//#define QAAT_NO_HEAP 1
 
 #include <stdint.h>
 #include <string.h>
 #include "heap.h"
+
+#ifdef __APPLE__
+	#define forceinline __inline__ __attribute__((always_inline))
+#endif
 
 /*
 	struct CI_IMPACT_METHOD
@@ -60,65 +70,91 @@ void top_k_qsort(uint16_t **a, long long n, long long top_k);
 */
 struct add_rsv_compare
 {
-int operator() (uint16_t *a, uint16_t *b) const { return *a > *b ? 1 : *a < *b ? -1 : (a > b ? 1 : a < b ? -1 : 0); }
+forceinline int operator() (uint16_t *a, uint16_t *b) const { return *a > *b ? 1 : *a < *b ? -1 : (a > b ? 1 : a < b ? -1 : 0); }
 };
 
 extern ANT_heap<uint16_t *, add_rsv_compare> *CI_heap;
 
-/*
-	ADD_RSV()
-	---------
-*/
-inline void add_rsv(uint32_t docid, uint16_t score)
-{
-uint16_t old_value;
-uint16_t *which = CI_accumulators + docid;
-add_rsv_compare cmp;
-
-/*
-	Make sure the accumulator exists
-*/
-if (CI_accumulator_clean_flags[docid >> CI_accumulators_shift] == 0)
-	{
-	CI_accumulator_clean_flags[docid >> CI_accumulators_shift] = 1;
-	memset(CI_accumulators + (CI_accumulators_width * (docid >> CI_accumulators_shift)), 0, CI_accumulators_width * sizeof(uint16_t));
-	}
-
-/*
-	CI_top_k search so we maintain a heap
-*/
-if (CI_results_list_length < CI_top_k)
-	{
+#ifdef QAAT_NO_HEAP
 	/*
-		We haven't got enough to worry about the heap yet, so just plonk it in
+		ADD_RSV()
+		---------
 	*/
-	old_value = *which;
-	*which += score;
+	forceinline void add_rsv(uint32_t docid, uint16_t score)
+	{
+	uint16_t *which = CI_accumulators + docid;
 
-	if (old_value == 0)
+	/*
+		Make sure the accumulator exists
+	*/
+	if (CI_accumulator_clean_flags[docid >> CI_accumulators_shift] == 0)
+		{
+		CI_accumulator_clean_flags[docid >> CI_accumulators_shift] = 1;
+		memset(CI_accumulators + (CI_accumulators_width * (docid >> CI_accumulators_shift)), 0, CI_accumulators_width * sizeof(uint16_t));
+		}
+
+	/*
+		Add to the accumulator and see if it should be added to the result candidate set
+	*/
+	if ((*which += score) == score)
 		CI_accumulator_pointers[CI_results_list_length++] = which;
+	}
 
-	if (CI_results_list_length == CI_top_k)
-		CI_heap->build_min_heap();
-	}
-else if (cmp(which, CI_accumulator_pointers[0]) >= 0)
-	{
+#else
 	/*
-		We were already in the heap, so update
+		ADD_RSV()
+		---------
 	*/
-	*which +=score;
-	CI_heap->min_update(which);
-	}
-else
+	forceinline void add_rsv(uint32_t docid, uint16_t score)
 	{
-	/*
-		We weren't in the heap, but we could get put there
-	*/
-	*which += score;
-	if (cmp(which, CI_accumulator_pointers[0]) > 0)
-		CI_heap->min_insert(which);
-	}
-}
+	uint16_t old_value;
+	uint16_t *which = CI_accumulators + docid;
+	add_rsv_compare cmp;
 
+	/*
+		Make sure the accumulator exists
+	*/
+	if (CI_accumulator_clean_flags[docid >> CI_accumulators_shift] == 0)
+		{
+		CI_accumulator_clean_flags[docid >> CI_accumulators_shift] = 1;
+		memset(CI_accumulators + (CI_accumulators_width * (docid >> CI_accumulators_shift)), 0, CI_accumulators_width * sizeof(uint16_t));
+		}
+
+	/*
+		CI_top_k search so we maintain a heap
+	*/
+	if (CI_results_list_length < CI_top_k)
+		{
+		/*
+			We haven't got enough to worry about the heap yet, so just plonk it in
+		*/
+		old_value = *which;
+		*which += score;
+
+		if (old_value == 0)
+			CI_accumulator_pointers[CI_results_list_length++] = which;
+
+		if (CI_results_list_length == CI_top_k)
+			CI_heap->build_min_heap();
+		}
+	else if (cmp(which, CI_accumulator_pointers[0]) >= 0)
+		{
+		/*
+			We were already in the heap, so update
+		*/
+		*which +=score;
+		CI_heap->min_update(which);
+		}
+	else
+		{
+		/*
+			We weren't in the heap, but we could get put there
+		*/
+		*which += score;
+		if (cmp(which, CI_accumulator_pointers[0]) > 0)
+			CI_heap->min_insert(which);
+		}
+	}
+#endif
 
 #endif
