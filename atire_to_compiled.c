@@ -222,7 +222,6 @@ while (fgets(buffer, sizeof(buffer), fp) != NULL)
 						char filename[1024];
 
 						sprintf(filename, "%llu", positings_file_number);
-						positings_file_number++;
 						if (postings_dot_c != NULL)
 							close_postings_dot_c(postings_dot_c);
 						postings_dot_c = open_postings_dot_c(filename);
@@ -234,6 +233,7 @@ while (fgets(buffer, sizeof(buffer), fp) != NULL)
 							fprintf(makefile, "CIt_%llu.o : CIt_%llu.c\n\t $(CXX) $(CXXFLAGS) $(CI_FLAGS) CIt_%llu.c\n\n", positings_file_number, positings_file_number, positings_file_number);
 							fprintf(makefile_include, " CIt_%llu.o", positings_file_number);
 						#endif
+						positings_file_number++;
 						}
 
 					previous_impact = ULONG_MAX;

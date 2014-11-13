@@ -10,7 +10,7 @@
 #include "heap.h"
 
 #if defined (__APPLE_) || defined (__GNUC__)
-	#define forceinline __inline__ __attribute__((always_inline))
+	#define __forceinline __inline__ __attribute__((always_inline))
 #endif
 
 class CI_vocab;
@@ -22,7 +22,7 @@ class CI_vocab;
 */
 struct add_rsv_compare
 {
-forceinline int operator() (uint16_t *a, uint16_t *b) const { return *a > *b ? 1 : *a < *b ? -1 : (a > b ? 1 : a < b ? -1 : 0); }
+__forceinline int operator() (uint16_t *a, uint16_t *b) const { return *a > *b ? 1 : *a < *b ? -1 : (a > b ? 1 : a < b ? -1 : 0); }
 };
 
 
@@ -83,7 +83,7 @@ extern const char *CI_doclist[];					// the list of document IDs (TREC document 
 	ADD_RSV()
 	---------
 */
-forceinline void add_rsv(CI_globals *globals, uint32_t docid, uint16_t score)
+__forceinline void add_rsv(CI_globals *globals, uint32_t docid, uint16_t score)
 {
 uint16_t old_value;
 uint16_t *which = globals->CI_accumulators + docid;
