@@ -45,23 +45,23 @@ public:
 	#define left_pos(i) (((i) << 1) + 1)
 	#define right_pos(i) (((i) << 1) + 2)
 
-	void set_size(long long size) { this->size = size; }
-	long long get_size(void) { return this->size; }
+	inline void set_size(long long size) { this->size = size; }
+	inline long long get_size(void) { return this->size; }
 
-	void max_heapify(long long pos);
-	void max_heapify(long long pos, long long hsize);
-	void build_max_heap(void);
-	int max_update_maximum(T key);
-	void max_heapsort(void);
-	void text_render(long long i);
+	virtual void max_heapify(long long pos);
+	virtual void max_heapify(long long pos, long long hsize);
+	virtual void build_max_heap(void);
+	virtual int max_update_maximum(T key);
+	virtual void max_heapsort(void);
+	virtual void text_render(long long i);
 
-	void min_heapify(long long pos);
-	void min_heapify(long long pos, long long hsize);
-	void build_min_heap(void);
-	void min_heapsort(void);
-	int min_insert(T key);
-	void min_update(T key);
-	T get_second_smallest(void);
+	virtual void min_heapify(long long pos);
+	virtual void min_heapify(long long pos, long long hsize);
+	virtual void build_min_heap(void);
+	virtual void min_heapsort(void);
+	virtual int min_insert(T key);
+	virtual void min_update(T key);
+	virtual T get_second_smallest(void);
 };
 
 /*
