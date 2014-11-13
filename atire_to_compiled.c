@@ -228,7 +228,7 @@ while (fgets(buffer, sizeof(buffer), fp) != NULL)
 						postings_dot_c = open_postings_dot_c(filename);
 
 						#ifdef _MSC_VER
-							fprintf(makefile, "CIt_%llu.ojb : CIt_%llu.c\n\t $(CXX) $(CXXFLAGS) $(CI_FLAGS)  CIt_%llu.c\n\n", positings_file_number, positings_file_number, positings_file_number);
+							fprintf(makefile, "CIt_%llu.obj : CIt_%llu.c\n\t $(CXX) $(CXXFLAGS) $(CI_FLAGS)  CIt_%llu.c\n\n", positings_file_number, positings_file_number, positings_file_number);
 							fprintf(makefile_include, " CIt_%llu.obj", positings_file_number);
 						#else
 							fprintf(makefile, "CIt_%llu.o : CIt_%llu.c\n\t $(CXX) $(CXXFLAGS) $(CI_FLAGS) CIt_%llu.c\n\n", positings_file_number, positings_file_number, positings_file_number);
