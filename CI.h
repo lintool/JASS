@@ -17,7 +17,7 @@
 #include "heap.h"
 
 #ifdef __APPLE__
-	#define forceinline __inline__ __attribute__((always_inline))
+	#define __forceinline __inline__ __attribute__((always_inline))
 #endif
 
 /*
@@ -70,7 +70,7 @@ void top_k_qsort(uint16_t **a, long long n, long long top_k);
 */
 struct add_rsv_compare
 {
-forceinline int operator() (uint16_t *a, uint16_t *b) const { return *a > *b ? 1 : *a < *b ? -1 : (a > b ? 1 : a < b ? -1 : 0); }
+__forceinline int operator() (uint16_t *a, uint16_t *b) const { return *a > *b ? 1 : *a < *b ? -1 : (a > b ? 1 : a < b ? -1 : 0); }
 };
 
 extern ANT_heap<uint16_t *, add_rsv_compare> *CI_heap;
@@ -80,7 +80,7 @@ extern ANT_heap<uint16_t *, add_rsv_compare> *CI_heap;
 		ADD_RSV()
 		---------
 	*/
-	forceinline void add_rsv(uint32_t docid, uint16_t score)
+	__forceinline void add_rsv(uint32_t docid, uint16_t score)
 	{
 	uint16_t *which = CI_accumulators + docid;
 
@@ -105,7 +105,7 @@ extern ANT_heap<uint16_t *, add_rsv_compare> *CI_heap;
 		ADD_RSV()
 		---------
 	*/
-	forceinline void add_rsv(uint32_t docid, uint16_t score)
+	__forceinline void add_rsv(uint32_t docid, uint16_t score)
 	{
 	uint16_t old_value;
 	uint16_t *which = CI_accumulators + docid;

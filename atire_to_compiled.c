@@ -163,7 +163,7 @@ mkdir("CIpostings", S_IRUSR | S_IWUSR | S_IXUSR | S_IRGRP | S_IXGRP | S_IROTH | 
 if ((makefile = fopen("CIpostings/makefile", "wb")) == NULL)
 	exit(printf("Cannot open 'CIpostings/makefile' output file\n"));
 #ifdef _MSC_VER
-	fprintf(makefile, "include makefile.include\n\nCI_FLAGS = -c /Tp\n\n");
+	fprintf(makefile, "include makefile.include\n\nCI_FLAGS = -c /Ot /Tp\n\n");
 #else
 	fprintf(makefile, "include makefile.include\n\nCI_FLAGS = -x c++ -c\n\n");
 #endif
@@ -228,7 +228,7 @@ while (fgets(buffer, sizeof(buffer), fp) != NULL)
 						postings_dot_c = open_postings_dot_c(filename);
 
 						#ifdef _MSC_VER
-							fprintf(makefile, "CIt_%llu.ojb : CIt_%llu.c\n\t $(CXX) $(CXXFLAGS) $(CI_FLAGS)  CIt_%llu.c\n\n", positings_file_number, positings_file_number, positings_file_number);
+							fprintf(makefile, "CIt_%llu.obj : CIt_%llu.c\n\t $(CXX) $(CXXFLAGS) $(CI_FLAGS)  CIt_%llu.c\n\n", positings_file_number, positings_file_number, positings_file_number);
 							fprintf(makefile_include, " CIt_%llu.obj", positings_file_number);
 						#else
 							fprintf(makefile, "CIt_%llu.o : CIt_%llu.c\n\t $(CXX) $(CXXFLAGS) $(CI_FLAGS) CIt_%llu.c\n\n", positings_file_number, positings_file_number, positings_file_number);
