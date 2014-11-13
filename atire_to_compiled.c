@@ -163,7 +163,7 @@ mkdir("CIpostings", S_IRUSR | S_IWUSR | S_IXUSR | S_IRGRP | S_IXGRP | S_IROTH | 
 if ((makefile = fopen("CIpostings/makefile", "wb")) == NULL)
 	exit(printf("Cannot open 'CIpostings/makefile' output file\n"));
 #ifdef _MSC_VER
-	fprintf(makefile, "include makefile.include\n\nCI_FLAGS = -c /Tp\n\n");
+	fprintf(makefile, "include makefile.include\n\nCI_FLAGS = -c /Ot /Tp\n\n");
 #else
 	fprintf(makefile, "include makefile.include\n\nCI_FLAGS = -x c++ -c\n\n");
 #endif
