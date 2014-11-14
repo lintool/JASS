@@ -234,6 +234,7 @@ globals.CI_accumulators_height = (CI_unique_documents + globals.CI_accumulators_
 accumulators_needed = globals.CI_accumulators_width * globals.CI_accumulators_height;				// guaranteed to be larger than the highest accumulagtor that can be initialised
 globals.CI_accumulator_clean_flags = new uint8_t[globals.CI_accumulators_height];
 
+globals.memset = memset;
 /*
 	Now prime the search engine
 */
