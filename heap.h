@@ -278,10 +278,12 @@ for (long long i = size/2-1; i >= 0; i--)
 */
 template <typename T, typename _Compare> void ANT_heap<T, _Compare>::text_render(long long i)
 {
-printf("i: %lld, ", i);
-for (long long i = 0; i < size; i++)
-	printf("%lld ", array[i]);
-printf("\n");
+#ifdef NEVER
+	printf("i: %lld, ", i);
+	for (long long i = 0; i < size; i++)
+		printf("%lld ", array[i]);
+	printf("\n");
+#endif
 }
 
 /*
