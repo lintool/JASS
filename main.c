@@ -15,7 +15,9 @@
 		#include <mach/mach_time.h>
 	#endif
 	#include <unistd.h>
+	#include <glob.h>
 	#include <sys/times.h>
+	#include <dlfcn.h>
 #endif
 
 #include "CI.h"
@@ -185,6 +187,57 @@ return (*lhs)->impact < (*rhs)->impact ? 1 : (*lhs)->impact == (*rhs)->impact ? 
 }
 
 /*
+	LOAD_DYLIBS
+	-----------
+	returns the number of files usccessfully loaded
+*/
+uint32_t load_dylibs(void)
+{
+static char table[1024];
+static glob_t file_list;
+uint32_t file;
+void *handle;
+char *pos;
+CI_vocab *lookup_table;
+uint32_t term_number = 0;
+
+puts("Load Postings");
+chdir("CIpostings");
+glob("*.dylib", GLOB_TILDE, NULL, &file_list);
+for(file = 0; file < file_list.gl_pathc; file++)
+	{
+	printf("FILENAME:%s ", file_list.gl_pathv[file]);
+	handle = dlopen(file_list.gl_pathv[file], RTLD_LAZY);
+	sprintf(table, "CI_dictionary_%s", file_list.gl_pathv[file] + 4);
+	if ((pos = strrchr(table, '.')) != NULL)
+		*pos = '\0';
+	printf("SYMBOL:%s\n", table);
+	lookup_table = (CI_vocab *)dlsym(handle, table);
+
+	if (lookup_table == NULL)
+		break;
+
+	while (lookup_table->term != NULL)
+		{
+		printf("TERM:%s\n", lookup_table->term);
+		memcpy(CI_dictionary + term_number, lookup_table, sizeof(CI_vocab));
+		lookup_table++;
+		term_number++;
+		printf("Copied\n");
+		}
+	}
+
+globfree(&file_list);
+chdir ("..");
+
+printf("Found %d dylibs\n", (int)file);
+if (term_number != CI_unique_terms)
+	printf("\nWARNING:the dylib term count (%d) does not match the vocab size (%d).  Is this all built from the same index?", term_number, CI_unique_terms);
+
+return file;
+}
+
+/*
 	MAIN()
 	------
 */
@@ -215,6 +268,10 @@ uint64_t max_remaining_impact;
 uint16_t **quantum_check_pointers;
 uint64_t early_terminate;
 uint16_t **partial_rsv;
+
+
+load_dylibs();
+
 
 if (argc != 2 && argc != 3)
 	exit(printf("Usage:%s <queryfile> [<top-k-number>]\n", argv[0]));

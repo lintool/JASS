@@ -164,7 +164,6 @@ if ((vocab_dot_c = fopen("CIvocab.c", "wb")) == NULL)
 fprintf(vocab_dot_c, "#include <stdint.h>\n");
 fprintf(vocab_dot_c, "#include \"CI.h\"\n");
 fprintf(vocab_dot_c, "#include \"CIpostings.h\"\n\n");
-fprintf(vocab_dot_c, "CI_vocab CI_dictionary[] =\n{\n");
 
 postings_dot_c = NULL;
 mkdir("CIpostings", S_IRUSR | S_IWUSR | S_IXUSR | S_IRGRP | S_IXGRP | S_IROTH | S_IXOTH);
@@ -188,7 +187,6 @@ if ((postings_dot_h = fopen("CIpostings.h", "wb")) == NULL)
 	exit(printf("Cannot open CIpostings.h output file\n"));
 fprintf(postings_dot_h, "#include <stdint.h>\n\n");
 
-first_time = true;
 while (fgets(buffer, sizeof(buffer), fp) != NULL)
 	{
 	line++;
@@ -221,7 +219,7 @@ while (fgets(buffer, sizeof(buffer), fp) != NULL)
 							fprintf(makefile, "CIt_%s.obj : CIt_%s.c\n\t $(CXX) $(CXXFLAGS) $(CI_FLAGS) CIt_%s.c\n\n", buffer, buffer, buffer);
 							fprintf(makefile_include, " CIt_%s.obj", buffer);
 						#else
-							fprintf(makefile, "CIt_%s.dylib : CIt_%s.c\n\t $(CXX) $(CXXFLAGS) -o %s.dylib $(CI_FLAGS) CIt_%s.c\n\n", buffer, buffer, buffer, buffer);
+							fprintf(makefile, "CIt_%s.dylib : CIt_%s.c\n\t $(CXX) $(CXXFLAGS) -o CIt_%s.dylib $(CI_FLAGS) CIt_%s.c\n\n", buffer, buffer, buffer, buffer);
 							fprintf(makefile_include, " CIt_%s.dylib", buffer);
 						#endif
 						}
@@ -290,26 +288,13 @@ while (fgets(buffer, sizeof(buffer), fp) != NULL)
 						close_postings_dot_c(postings_dot_c);
 					}
 				}
-			if (!first_time)
-				if (include_postings)
-					fprintf(vocab_dot_c, ",\n");			// add to the vocab c file
-
 			if (include_postings)
-				{
-				fprintf(vocab_dot_c, "{\"%s\", CIt_ip_%s, %llu}", buffer, buffer, impacts_for_this_term);			// add to the vocab c file
-				first_time = false;
 				unique_terms_in_index++;
-				}
-			else
-				{
-//				fprintf(vocab_dot_c, "{\"%s\", 0, %llu}", buffer, impacts_for_this_term);			// add to the vocab c file
-//				first_time = false;
-				}
 			}
 		}
 	}
 
-fprintf(vocab_dot_c, "\n};\n\n");
+fprintf(vocab_dot_c, "CI_vocab CI_dictionary[%llu];\n", unique_terms_in_index);
 fprintf(vocab_dot_c, "uint32_t CI_unique_terms = %llu;\n", unique_terms_in_index);
 fprintf(vocab_dot_c, "uint32_t CI_unique_documents = %llu;\n", max_docid + 1);			// +1 because we count from zero
 fprintf(vocab_dot_c, "uint32_t CI_max_q = %llu;\n", max_q);
