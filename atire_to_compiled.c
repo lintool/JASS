@@ -29,6 +29,8 @@ uint32_t termlist_length = 0;
 
 #define TERMS_PER_SOURCE_CODE_FILE 1000					/* when compiling everything (seperate_files = false) put this numnber of terms in each source code file */
 
+ostringstream *vocab_in_current_file = NULL;
+
 /*
 	STRING_COMPARE()
 	----------------
@@ -79,6 +81,10 @@ fprintf(postings_dot_c, "#include <stdint.h>\n");
 
 fprintf(postings_dot_c, "#include \"../CI.h\"\n\n");
 
+delete vocab_in_current_file;
+vocab_in_current_file = new ostringstream;
+*vocab_in_current_file << "\nCI_vocab CI_dictionary_" << term << "[] = \n{ \n";
+
 return postings_dot_c;
 }
 
@@ -88,6 +94,8 @@ return postings_dot_c;
 */
 void close_postings_dot_c(FILE *fp)
 {
+fprintf(fp, "%s{0,0}\n};\n\n", vocab_in_current_file->str().c_str());
+
 fclose(fp);
 }
 
@@ -165,7 +173,7 @@ if ((makefile = fopen("CIpostings/makefile", "wb")) == NULL)
 #ifdef _MSC_VER
 	fprintf(makefile, "include makefile.include\n\nCI_FLAGS = -c /Ot /Tp\n\n");
 #else
-	fprintf(makefile, "include makefile.include\n\nCI_FLAGS = -x c++ -c\n\n");
+	fprintf(makefile, "include makefile.include\n\nCI_FLAGS = -dynamiclib -x c++\n\n");
 #endif
 
 if ((makefile_include = fopen("CIpostings/makefile.include", "wb")) == NULL)
@@ -213,8 +221,8 @@ while (fgets(buffer, sizeof(buffer), fp) != NULL)
 							fprintf(makefile, "CIt_%s.obj : CIt_%s.c\n\t $(CXX) $(CXXFLAGS) $(CI_FLAGS) CIt_%s.c\n\n", buffer, buffer, buffer);
 							fprintf(makefile_include, " CIt_%s.obj", buffer);
 						#else
-							fprintf(makefile, "CIt_%s.o : CIt_%s.c\n\t $(CXX) $(CXXFLAGS) $(CI_FLAGS) CIt_%s.c\n\n", buffer, buffer, buffer);
-							fprintf(makefile_include, " CIt_%s.o", buffer);
+							fprintf(makefile, "CIt_%s.dylib : CIt_%s.c\n\t $(CXX) $(CXXFLAGS) -o %s.dylib $(CI_FLAGS) CIt_%s.c\n\n", buffer, buffer, buffer, buffer);
+							fprintf(makefile_include, " CIt_%s.dylib", buffer);
 						#endif
 						}
 					else if (((line - 1) % TERMS_PER_SOURCE_CODE_FILE) == 0)
@@ -230,8 +238,8 @@ while (fgets(buffer, sizeof(buffer), fp) != NULL)
 							fprintf(makefile, "CIt_%llu.obj : CIt_%llu.c\n\t $(CXX) $(CXXFLAGS) $(CI_FLAGS)  CIt_%llu.c\n\n", positings_file_number, positings_file_number, positings_file_number);
 							fprintf(makefile_include, " CIt_%llu.obj", positings_file_number);
 						#else
-							fprintf(makefile, "CIt_%llu.o : CIt_%llu.c\n\t $(CXX) $(CXXFLAGS) $(CI_FLAGS) CIt_%llu.c\n\n", positings_file_number, positings_file_number, positings_file_number);
-							fprintf(makefile_include, " CIt_%llu.o", positings_file_number);
+							fprintf(makefile, "CIt_%llu.dylib : CIt_%llu.c\n\t $(CXX) $(CXXFLAGS) $(CI_FLAGS) CIt_%llu.c\n\n", positings_file_number, positings_file_number, positings_file_number);
+							fprintf(makefile_include, " CIt_%llu.dylib", positings_file_number);
 						#endif
 						positings_file_number++;
 						}
@@ -270,13 +278,14 @@ while (fgets(buffer, sizeof(buffer), fp) != NULL)
 							fprintf(postings_dot_c, "add_rsv(g, %llu, %llu);\n", docid, impact);
 							}
 					fprintf(postings_dot_c, "}\n\n");
-					fprintf(postings_dot_c, "%s{0,0}\n};\n", term_method_list.str().c_str());
+					fprintf(postings_dot_c, "%s{0,0}\n};\n\n", term_method_list.str().c_str());
 
 					fprintf(postings_dot_c, "void *CIt_ip_%s[] = \n{\n", buffer);
 					for (which_impact = 0; which_impact <= impacts_for_this_term; which_impact++)
 						fprintf(postings_dot_c, "CIt_i_%s + %llu,\n", buffer, which_impact);
 					fprintf(postings_dot_c, "};\n");
 
+					*vocab_in_current_file << "{\"" << buffer << "\", CIt_ip_" << buffer << ", " << impacts_for_this_term << "},\n";
 					if (seperate_files)
 						close_postings_dot_c(postings_dot_c);
 					}
@@ -312,7 +321,7 @@ fclose(makefile);
 #ifdef _MSC_VER
 	fprintf(makefile_include, "\n\tlib CIt_*.obj /OUT:..\\CIpostings.lib\n\n");
 #else
-	fprintf(makefile_include, "\n\tld -r CIt_*.o -o ../CIpostings.o\n\n");
+	fprintf(makefile_include, "\n\tld -r CIt_*.dylib -o ../CIpostings.o\n\n");
 #endif
 fclose(makefile_include);
 
