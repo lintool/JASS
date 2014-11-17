@@ -1,6 +1,10 @@
+all : atire_to_compiled main
+
+main : main.c
+	make -f makefile.ci
+
 atire_to_compiled : atire_to_compiled.c
 	g++ -x c++ atire_to_compiled.c -o atire_to_compiled
-
 
 clean:
 	-rm -rf CIpostings
