@@ -26,26 +26,16 @@ __forceinline int operator() (uint16_t *a, uint16_t *b) const { return *a > *b ?
 };
 
 
-/*
-	struct CI_GLOBALS
-	-----------------
-	Since the Mac appears to have some 2GB or 4GB limit on offsets, we're forced to place all the globals into a struct 
-	and to pass the address of that to all the methods
-*/
-struct CI_globals
-{
-uint16_t *CI_accumulators;				// the accumulators
-uint16_t **CI_accumulator_pointers;	// an array of pointers into the accumulators (used to avoid computing docIDs)
-uint32_t CI_top_k;							// the number of results to find (top-k)
-uint32_t CI_results_list_length;		// the number of results we found (at most top-k)
+extern uint16_t *CI_accumulators;				// the accumulators
+extern uint16_t **CI_accumulator_pointers;	// an array of pointers into the accumulators (used to avoid computing docIDs)
+extern uint32_t CI_top_k;							// the number of results to find (top-k)
+extern uint32_t CI_results_list_length;		// the number of results we found (at most top-k)
 
-uint8_t *CI_accumulator_clean_flags;	// is the "row" of the accumulator table
-uint32_t CI_accumulators_shift;			// number of bits to shift (right) the docid by to get the CI_accumulator_clean_flags
-uint32_t CI_accumulators_width;			// the "width" of the accumulator table
-uint32_t CI_accumulators_height;		// the "height" of the accumulator table
-ANT_heap<uint16_t *, add_rsv_compare> *CI_heap;
-} ;
-
+extern uint8_t *CI_accumulator_clean_flags;	// is the "row" of the accumulator table
+extern uint32_t CI_accumulators_shift;			// number of bits to shift (right) the docid by to get the CI_accumulator_clean_flags
+extern uint32_t CI_accumulators_width;			// the "width" of the accumulator table
+extern uint32_t CI_accumulators_height;		// the "height" of the accumulator table
+extern ANT_heap<uint16_t *, add_rsv_compare> *CI_heap;
 
 /*
 	struct CI_IMPACT_METHOD
@@ -54,7 +44,7 @@ ANT_heap<uint16_t *, add_rsv_compare> *CI_heap;
 struct CI_impact_method
 {
 uint16_t impact;
-void (*method)(CI_globals *globals);
+void (*method)(void);
 } ;
 
 /*
@@ -83,27 +73,27 @@ extern const char *CI_doclist[];					// the list of document IDs (TREC document 
 /*
 	ADD_RSV()
 	---------
+	This method cannot be forced inline because when I do so clang generates code that (sometimes) doesn't work!
 */
-//__forceinline void add_rsv(CI_globals *globals, uint32_t docid, uint16_t score)
-static void add_rsv(CI_globals *globals, uint32_t docid, uint16_t score)
+static void add_rsv(uint32_t docid, uint16_t score)
 {
 uint16_t old_value;
-uint16_t *which = globals->CI_accumulators + docid;
+uint16_t *which = CI_accumulators + docid;
 add_rsv_compare cmp;
 
 /*
 	Make sure the accumulator exists
 */
-if (globals->CI_accumulator_clean_flags[docid >> globals->CI_accumulators_shift] == 0)
+if (CI_accumulator_clean_flags[docid >> CI_accumulators_shift] == 0)
 	{
-	globals->CI_accumulator_clean_flags[docid >> globals->CI_accumulators_shift] = 1;
-	memset(globals->CI_accumulators + (globals->CI_accumulators_width * (docid >> globals->CI_accumulators_shift)), 0, globals->CI_accumulators_width * sizeof(uint16_t));
+	CI_accumulator_clean_flags[docid >> CI_accumulators_shift] = 1;
+	memset(CI_accumulators + (CI_accumulators_width * (docid >> CI_accumulators_shift)), 0, CI_accumulators_width * sizeof(uint16_t));
 	}
 
 /*
 	CI_top_k search so we maintain a heap
 */
-if (globals->CI_results_list_length < globals->CI_top_k)
+if (CI_results_list_length < CI_top_k)
 	{
 	/*
 		We haven't got enough to worry about the heap yet, so just plonk it in
@@ -112,18 +102,18 @@ if (globals->CI_results_list_length < globals->CI_top_k)
 	*which += score;
 
 	if (old_value == 0)
-		globals->CI_accumulator_pointers[globals->CI_results_list_length++] = which;
+		CI_accumulator_pointers[CI_results_list_length++] = which;
 
-	if (globals->CI_results_list_length == globals->CI_top_k)
-		globals->CI_heap->build_min_heap();
+	if (CI_results_list_length == CI_top_k)
+		CI_heap->build_min_heap();
 	}
-else if (cmp(which, globals->CI_accumulator_pointers[0]) >= 0)
+else if (cmp(which, CI_accumulator_pointers[0]) >= 0)
 	{
 	/*
 		We were already in the heap, so update
 	*/
 	*which +=score;
-	globals->CI_heap->min_update(which);
+	CI_heap->min_update(which);
 	}
 else
 	{
@@ -131,8 +121,8 @@ else
 		We weren't in the heap, but we could get put there
 	*/
 	*which += score;
-	if (cmp(which, globals->CI_accumulator_pointers[0]) > 0)
-		globals->CI_heap->min_insert(which);
+	if (cmp(which, CI_accumulator_pointers[0]) > 0)
+		CI_heap->min_insert(which);
 	}
 }
 
