@@ -206,12 +206,10 @@ chdir("CIpostings");
 glob("*.dylib", GLOB_TILDE, NULL, &file_list);
 for(file = 0; file < file_list.gl_pathc; file++)
 	{
-	printf("FILENAME:%s ", file_list.gl_pathv[file]);
 	handle = dlopen(file_list.gl_pathv[file], RTLD_LAZY);
 	sprintf(table, "CI_dictionary_%s", file_list.gl_pathv[file] + 4);
 	if ((pos = strrchr(table, '.')) != NULL)
 		*pos = '\0';
-	printf("SYMBOL:%s\n", table);
 	lookup_table = (CI_vocab *)dlsym(handle, table);
 
 	if (lookup_table == NULL)
@@ -219,11 +217,9 @@ for(file = 0; file < file_list.gl_pathc; file++)
 
 	while (lookup_table->term != NULL)
 		{
-		printf("TERM:%s\n", lookup_table->term);
 		memcpy(CI_dictionary + term_number, lookup_table, sizeof(CI_vocab));
 		lookup_table++;
 		term_number++;
-		printf("Copied\n");
 		}
 	}
 
@@ -233,6 +229,9 @@ chdir ("..");
 printf("Found %d dylibs\n", (int)file);
 if (term_number != CI_unique_terms)
 	printf("\nWARNING:the dylib term count (%d) does not match the vocab size (%d).  Is this all built from the same index?", term_number, CI_unique_terms);
+
+puts("Sort dictionary");
+qsort(CI_dictionary, CI_unique_terms, sizeof(*CI_dictionary), CI_vocab::compare);
 
 return file;
 }
@@ -291,7 +290,6 @@ globals.CI_accumulators_height = (CI_unique_documents + globals.CI_accumulators_
 accumulators_needed = globals.CI_accumulators_width * globals.CI_accumulators_height;				// guaranteed to be larger than the highest accumulagtor that can be initialised
 globals.CI_accumulator_clean_flags = new uint8_t[globals.CI_accumulators_height];
 
-globals.memset = memset;
 /*
 	Now prime the search engine
 */
