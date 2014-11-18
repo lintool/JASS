@@ -22,10 +22,21 @@
 
 #include "CI.h"
 
+
+uint16_t *CI_accumulators;				// the accumulators
+uint16_t **CI_accumulator_pointers;	// an array of pointers into the accumulators (used to avoid computing docIDs)
+uint32_t CI_top_k;							// the number of results to find (top-k)
+uint32_t CI_results_list_length;		// the number of results we found (at most top-k)
+
+uint8_t *CI_accumulator_clean_flags;	// is the "row" of the accumulator table
+uint32_t CI_accumulators_shift;			// number of bits to shift (right) the docid by to get the CI_accumulator_clean_flags
+uint32_t CI_accumulators_width;			// the "width" of the accumulator table
+uint32_t CI_accumulators_height;		// the "height" of the accumulator table
+ANT_heap<uint16_t *, add_rsv_compare> *CI_heap;
+
+
 #define MAX_TERMS_PER_QUERY 10
 #define MAX_QUANTUM 0xFF
-
-CI_globals globals;
 
 #ifdef _MSC_VER
 	#define atoll(x) _atoi64(x)
@@ -167,10 +178,10 @@ void trec_dump_results(uint32_t topic_id, FILE *out, uint32_t output_length)
 {
 uint32_t current, id;
 
-for (current = 0; current < (output_length < globals.CI_results_list_length ? output_length : globals.CI_results_list_length); current++)
+for (current = 0; current < (output_length < CI_results_list_length ? output_length : CI_results_list_length); current++)
 	{
-	id = globals.CI_accumulator_pointers[current] -  globals.CI_accumulators;
-	fprintf(out, "%d Q0 %s %d %d COMPILED (ID:%u)\n", topic_id, CI_doclist[id], current + 1, globals.CI_accumulators[id], id);
+	id = CI_accumulator_pointers[current] -  CI_accumulators;
+	fprintf(out, "%d Q0 %s %d %d COMPILED (ID:%u)\n", topic_id, CI_doclist[id], current + 1, CI_accumulators[id], id);
 	}
 }
 
@@ -232,6 +243,7 @@ if (term_number != CI_unique_terms)
 
 puts("Sort dictionary");
 qsort(CI_dictionary, CI_unique_terms, sizeof(*CI_dictionary), CI_vocab::compare);
+puts("Done sorting dictionary");
 
 return file;
 }
@@ -284,24 +296,24 @@ if ((out = fopen("ranking.txt", "w")) == NULL )
 /*
 	Compute the details of the accumulator table
 */
-globals.CI_accumulators_shift = log2(sqrt((double)CI_unique_documents));
-globals.CI_accumulators_width = 1 << globals.CI_accumulators_shift;
-globals.CI_accumulators_height = (CI_unique_documents + globals.CI_accumulators_width) / globals.CI_accumulators_width;
-accumulators_needed = globals.CI_accumulators_width * globals.CI_accumulators_height;				// guaranteed to be larger than the highest accumulagtor that can be initialised
-globals.CI_accumulator_clean_flags = new uint8_t[globals.CI_accumulators_height];
+CI_accumulators_shift = log2(sqrt((double)CI_unique_documents));
+CI_accumulators_width = 1 << CI_accumulators_shift;
+CI_accumulators_height = (CI_unique_documents + CI_accumulators_width) / CI_accumulators_width;
+accumulators_needed = CI_accumulators_width * CI_accumulators_height;				// guaranteed to be larger than the highest accumulagtor that can be initialised
+CI_accumulator_clean_flags = new uint8_t[CI_accumulators_height];
 
 /*
 	Now prime the search engine
 */
-globals.CI_accumulators = new uint16_t[accumulators_needed];
-globals.CI_accumulator_pointers = new uint16_t * [accumulators_needed];
-globals.CI_top_k = argc == 2 ? CI_unique_documents + 1 : atoll(argv[2]);
+CI_accumulators = new uint16_t[accumulators_needed];
+CI_accumulator_pointers = new uint16_t * [accumulators_needed];
+CI_top_k = argc == 2 ? CI_unique_documents + 1 : atoll(argv[2]);
 
 /*
 	For QaaT early termination we need K+1 elements in the heap so that we can check that nothing else can get into the top-k.
 */
-globals.CI_top_k++;
-globals.CI_heap = new ANT_heap<uint16_t *, add_rsv_compare>(*globals.CI_accumulator_pointers, globals.CI_top_k);
+CI_top_k++;
+CI_heap = new ANT_heap<uint16_t *, add_rsv_compare>(*CI_accumulator_pointers, CI_top_k);
 
 /*
 	Allocate the quantum at a time table
@@ -338,7 +350,7 @@ while (experimental_repeat < times_to_repeat_experiment)
 			continue;
 
 		total_number_of_topics++;
-		globals.CI_results_list_length = 0;
+		CI_results_list_length = 0;
 
 		/*
 			get the TREC query_id
@@ -349,7 +361,7 @@ while (experimental_repeat < times_to_repeat_experiment)
 			Initialise the accumulators
 		*/
 		timer = timer_start();
-		memset(globals.CI_accumulator_clean_flags, 0, globals.CI_accumulators_height);
+		memset(CI_accumulator_clean_flags, 0, CI_accumulators_height);
 		stats_accumulator_time += timer_stop(timer);
 
 		/*
@@ -406,7 +418,7 @@ while (experimental_repeat < times_to_repeat_experiment)
 			{
 			stats_quantum_count++;
 			timer = timer_start();
-			(*(*current_quantum)->method)(&globals);
+			(*(*current_quantum)->method)();
 			stats_postings_time += timer_stop(timer);
 
 			/*
@@ -419,7 +431,7 @@ while (experimental_repeat < times_to_repeat_experiment)
 			max_remaining_impact -= (*current_quantum)->impact;
 			max_remaining_impact += ((*current_quantum) + 1)->impact;
 
-			if (globals.CI_results_list_length > globals.CI_top_k - 1)
+			if (CI_results_list_length > CI_top_k - 1)
 				{
 				stats_quantum_check_count++;
 				/*
@@ -428,12 +440,12 @@ while (experimental_repeat < times_to_repeat_experiment)
 					2. sort the top k + 1
 					3. go through consequative rsvs checking to see if reordering is possible (check rsv[k] - rsv[k + 1])
 				*/
-				memcpy(quantum_check_pointers, globals.CI_accumulator_pointers, globals.CI_top_k * sizeof(*quantum_check_pointers));
-				top_k_qsort(quantum_check_pointers, globals.CI_top_k, globals.CI_top_k);
+				memcpy(quantum_check_pointers, CI_accumulator_pointers, CI_top_k * sizeof(*quantum_check_pointers));
+				top_k_qsort(quantum_check_pointers, CI_top_k, CI_top_k);
 
 				early_terminate = true;
 
-				for (partial_rsv = quantum_check_pointers; partial_rsv < quantum_check_pointers + globals.CI_top_k - 1; partial_rsv++)
+				for (partial_rsv = quantum_check_pointers; partial_rsv < quantum_check_pointers + CI_top_k - 1; partial_rsv++)
 					if (**partial_rsv - **(partial_rsv + 1) < max_remaining_impact)		// We're sorted from largest to smallest so a[x] - a[x+1] >= 0
 						{
 						early_terminate = false;
@@ -452,7 +464,7 @@ while (experimental_repeat < times_to_repeat_experiment)
 			sort the accumulator pointers to put the highest RSV document at the top of the list
 		*/
 		timer = timer_start();
-		top_k_qsort(globals.CI_accumulator_pointers, globals.CI_results_list_length, globals.CI_top_k - 1);
+		top_k_qsort(CI_accumulator_pointers, CI_results_list_length, CI_top_k - 1);
 		stats_sort_time += timer_stop(timer);
 
 		/*
@@ -465,7 +477,7 @@ while (experimental_repeat < times_to_repeat_experiment)
 		/*
 			Creat a TREC run file as output
 		*/
-		trec_dump_results(query_id, out, globals.CI_top_k - 1);		// subtract 1 from top_k because we added 1 for the early termination checks
+		trec_dump_results(query_id, out, CI_top_k - 1);		// subtract 1 from top_k because we added 1 for the early termination checks
 		}
 	}
 

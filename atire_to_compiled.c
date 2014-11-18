@@ -172,7 +172,7 @@ if ((makefile = fopen("CIpostings/makefile", "wb")) == NULL)
 #ifdef _MSC_VER
 	fprintf(makefile, "include makefile.include\n\nCI_FLAGS = -c /Ot /Tp\n\n");
 #else
-	fprintf(makefile, "include makefile.include\n\nCI_FLAGS = -dynamiclib -x c++\n\n");
+	fprintf(makefile, "include makefile.include\n\nCI_FLAGS = -dynamiclib -undefined dynamic_lookup -x c++\n\n");
 #endif
 
 if ((makefile_include = fopen("CIpostings/makefile.include", "wb")) == NULL)
@@ -268,12 +268,12 @@ while (fgets(buffer, sizeof(buffer), fp) != NULL)
 								else
 									fprintf(postings_dot_c, "}\n\n");
 
-								fprintf(postings_dot_c, "static void CIt_%s_i_%llu(CI_globals *g)\n{\n", buffer, impact);
+								fprintf(postings_dot_c, "static void CIt_%s_i_%llu(void)\n{\n", buffer, impact);
 								term_method_list << "{" << impact << ", CIt_" << buffer << "_i_" << impact << "},\n";
 								previous_impact = impact;
 								impacts_for_this_term++;
 								}
-							fprintf(postings_dot_c, "add_rsv(g, %llu, %llu);\n", docid, impact);
+							fprintf(postings_dot_c, "add_rsv(%llu, %llu);\n", docid, impact);
 							}
 					fprintf(postings_dot_c, "}\n\n");
 					fprintf(postings_dot_c, "%s{0,0}\n};\n\n", term_method_list.str().c_str());
