@@ -44,8 +44,8 @@ uint32_t CI_accumulators_shift;			// number of bits to shift (right) the docid b
 uint32_t CI_accumulators_width;			// the "width" of the accumulator table
 uint32_t CI_accumulators_height;		// the "height" of the accumulator table
 ANT_heap<uint16_t *, add_rsv_compare> *CI_heap;
-void *(*memset)(void *s, int c, size_t n);			// so that it can be called from the heap code
 } ;
+
 
 /*
 	struct CI_IMPACT_METHOD
@@ -84,7 +84,8 @@ extern const char *CI_doclist[];					// the list of document IDs (TREC document 
 	ADD_RSV()
 	---------
 */
-__forceinline void add_rsv(CI_globals *globals, uint32_t docid, uint16_t score)
+//__forceinline void add_rsv(CI_globals *globals, uint32_t docid, uint16_t score)
+static void add_rsv(CI_globals *globals, uint32_t docid, uint16_t score)
 {
 uint16_t old_value;
 uint16_t *which = globals->CI_accumulators + docid;
@@ -96,7 +97,7 @@ add_rsv_compare cmp;
 if (globals->CI_accumulator_clean_flags[docid >> globals->CI_accumulators_shift] == 0)
 	{
 	globals->CI_accumulator_clean_flags[docid >> globals->CI_accumulators_shift] = 1;
-	globals->memset(globals->CI_accumulators + (globals->CI_accumulators_width * (docid >> globals->CI_accumulators_shift)), 0, globals->CI_accumulators_width * sizeof(uint16_t));
+	memset(globals->CI_accumulators + (globals->CI_accumulators_width * (docid >> globals->CI_accumulators_shift)), 0, globals->CI_accumulators_width * sizeof(uint16_t));
 	}
 
 /*
