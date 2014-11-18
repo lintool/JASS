@@ -110,7 +110,7 @@ uint64_t line = 0;
 uint64_t cf, df, docid, impact, first_time = true, max_docid = 0, max_q = 0;
 FILE *fp, *vocab_dot_c, *postings_dot_c, *postings_dot_h, *doclist, *doclist_dot_c, *makefile, *makefile_include;
 uint32_t include_postings;
-uint64_t positings_file_number = 0;
+uint64_t postings_file_number = 0;
 uint64_t previous_impact, impacts_for_this_term, which_impact, unique_terms_in_index = 0;
 
 if (argc != 3 && argc != 4)
@@ -227,19 +227,19 @@ while (fgets(buffer, sizeof(buffer), fp) != NULL)
 						{
 						char filename[1024];
 
-						sprintf(filename, "%llu", positings_file_number);
+						sprintf(filename, "%llu", postings_file_number);
 						if (postings_dot_c != NULL)
 							close_postings_dot_c(postings_dot_c);
 						postings_dot_c = open_postings_dot_c(filename);
 
 						#ifdef _MSC_VER
-							fprintf(makefile, "CIt_%llu.obj : CIt_%llu.c\n\t $(CXX) $(CXXFLAGS) $(CI_FLAGS)  CIt_%llu.c\n\n", positings_file_number, positings_file_number, positings_file_number);
-							fprintf(makefile_include, " CIt_%llu.obj", positings_file_number);
+							fprintf(makefile, "CIt_%llu.obj : CIt_%llu.c\n\t $(CXX) $(CXXFLAGS) $(CI_FLAGS)  CIt_%llu.c\n\n", postings_file_number, postings_file_number, postings_file_number);
+							fprintf(makefile_include, " CIt_%llu.obj", postings_file_number);
 						#else
-							fprintf(makefile, "CIt_%llu.dylib : CIt_%llu.c\n\t $(CXX) $(CXXFLAGS) $(CI_FLAGS) CIt_%llu.c\n\n", positings_file_number, positings_file_number, positings_file_number);
-							fprintf(makefile_include, " CIt_%llu.dylib", positings_file_number);
+							fprintf(makefile, "CIt_%llu.dylib : CIt_%llu.c\n\t $(CXX) $(CXXFLAGS) -o CIt_%llu.dylib $(CI_FLAGS) CIt_%llu.c\n\n", postings_file_number, postings_file_number, postings_file_number, postings_file_number);
+							fprintf(makefile_include, " CIt_%llu.dylib", postings_file_number);
 						#endif
-						positings_file_number++;
+						postings_file_number++;
 						}
 
 					previous_impact = ULONG_MAX;
