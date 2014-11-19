@@ -12,6 +12,8 @@
 #include <sys/stat.h>
 #include <limits.h>
 
+#include "compress_variable_byte.h"
+
 #ifdef _MSC_VER
 	#include <direct.h>
 
@@ -100,11 +102,77 @@ fclose(fp);
 }
 
 /*
+	USAGE()
+	-------
+*/
+uint8_t usage(char *filename)
+{
+printf("Usage: %s <index.dump> <docid.aspt> [<topicfile>] [-s|-S]", filename);
+puts("Generate index.dump with atire_dictionary > index.dump");
+puts("Generatedocid.aspt with atire_doclist");
+puts("Generate <topicfile> with trec2query <trectopicfile>");
+puts("-s to turn the postings into uncompressed static data rather than code");
+puts("-c to turn the postings into compressed static data");
+
+return 1;
+}
+
+#define MAX_DOCIDS_PER_IMPACT (1024*1024)
+
+uint32_t remember_buffer[MAX_DOCIDS_PER_IMPACT];
+uint32_t *remember_into = remember_buffer;
+ANT_compress_variable_byte compressor;
+uint8_t remember_compressed[MAX_DOCIDS_PER_IMPACT * sizeof(uint32_t)];
+
+/*
+	REMEMBER()
+	----------
+*/
+void remember(uint32_t docid)
+{
+*remember_into++ = docid;
+}
+
+/*
+	REMEMBER_COMPRESS()
+	-------------------
+*/
+uint8_t *remember_compress(uint32_t *length)
+{
+uint32_t is, was;
+/*
+	Compute deltas
+*/
+was = 0;
+for (uint32_t *current = remember_buffer; current < remember_into; current++)
+	{
+	is = *current;
+	*current -= was;
+	was = is;
+	}
+
+
+/*
+	Now compress
+*/
+if ((*length = compressor.compress(remember_compressed, sizeof(remember_compressed), remember_buffer, remember_into - remember_buffer)) <= 0)
+	exit(printf("Can't compress"));
+
+/*
+	rewind the buffer
+*/
+remember_into = remember_buffer;
+
+return remember_compressed;
+}
+
+/*
 	MAIN()
 	------
 */
 int main(int argc, char *argv[])
 {
+uint32_t parameter, static_data, static_data_compressed, docids_in_impact;
 char *end_of_term, *buffer_address = (char *)buffer;
 uint64_t line = 0;
 uint64_t cf, df, docid, impact, first_time = true, max_docid = 0, max_q = 0;
@@ -113,19 +181,31 @@ uint32_t include_postings;
 uint64_t postings_file_number = 0;
 uint64_t previous_impact, impacts_for_this_term, which_impact, unique_terms_in_index = 0;
 
-if (argc != 3 && argc != 4)
-	exit(printf("Usage: %s <index.dump> <docid.aspt> [<topicfile>]\nGenerate index.dump with atire_dictionary > index.dump\nGeneratedocid.aspt with atire_doclist\nGenerate <topicfile> with trec2query <trectopicfile> t\n", argv[0]));
+if (argc <3 || argc > 5)
+	exit(usage(argv[0]));
 
-if (argc == 4)
+seperate_files = false;
+static_data = static_data_compressed = false;
+
+if (argc >= 4)
 	{
-	/*
-		If the user gives me a <topicfile> then put each term into a seperate file.
-	*/
-	seperate_files = true;
-	load_topic_file(argv[3]);
+	for (parameter = 3; parameter < argc; parameter++)
+		if (strcmp(argv[parameter], "-s") == 0)
+			static_data = true;
+		else if (strcmp(argv[parameter], "-c") == 0)
+			static_data_compressed = true;
+		else
+			{
+			/*
+				If the user gives me a <topicfile> then put each term into a seperate file.
+			*/
+			seperate_files = true;
+			load_topic_file(argv[3]);
+			}
 	}
-else
-	seperate_files = false;
+
+if (static_data && static_data_compressed)
+	exit(printf("Can't have both the uncompressed and compressed static data at the same time"));
 
 if ((fp = fopen(argv[1], "rb")) == NULL)
 	exit(printf("Cannot open input file '%s'\n", argv[1]));
@@ -172,7 +252,11 @@ if ((makefile = fopen("CIpostings/makefile", "wb")) == NULL)
 #ifdef _MSC_VER
 	fprintf(makefile, "include makefile.include\n\nCI_FLAGS = -c /Ot /Tp\n\n");
 #else
-	fprintf(makefile, "include makefile.include\n\nCI_FLAGS = -dynamiclib -undefined dynamic_lookup -x c++\n\n");
+	fprintf(makefile, "include makefile.include\n\n");
+	fprintf(makefile, "CI_FLAGS = -dynamiclib -undefined dynamic_lookup -x c++");
+	if (static_data_compressed || static_data)
+		fprintf(makefile, " -O3");
+	fprintf(makefile, "\n\n");
 #endif
 
 if ((makefile_include = fopen("CIpostings/makefile.include", "wb")) == NULL)
@@ -241,11 +325,12 @@ while (fgets(buffer, sizeof(buffer), fp) != NULL)
 						#endif
 						postings_file_number++;
 						}
-
+					docids_in_impact = 0;
 					previous_impact = ULONG_MAX;
 					ostringstream term_method_list;
 
 					while (end_of_term != NULL)
+						{
 						if ((end_of_term = strchr(end_of_term, '<')) != NULL)
 							{
 							docid = atoll(end_of_term + 1);
@@ -266,15 +351,105 @@ while (fgets(buffer, sizeof(buffer), fp) != NULL)
 									term_method_list << "static struct CI_impact_method CIt_i_" << buffer << "[] =\n{\n";
 									}
 								else
+									{
+									if (static_data_compressed)
+										{
+										uint8_t *data, *byte;
+										uint32_t data_length_in_bytes;
+
+										fprintf(postings_dot_c, "uint32_t doc, sum;\nstatic unsigned char doclist[] = {\n");
+										data = remember_compress(&data_length_in_bytes);
+										for (byte = data; byte < data + data_length_in_bytes; byte++)
+											{
+											fprintf(postings_dot_c, "0x%02X, ", *byte);
+											if (*byte & 0x80)
+												fprintf(postings_dot_c, "\n");
+											}
+
+										fprintf(postings_dot_c, "};\n");
+										fprintf(postings_dot_c, "sum = 0;\n");
+										fprintf(postings_dot_c, "for (uint8_t *i = doclist; i < doclist + %u; i++)\n", data_length_in_bytes);
+										fprintf(postings_dot_c, "	{\n");
+										fprintf(postings_dot_c, "	if (*i & 0x80)\n");
+										fprintf(postings_dot_c, "		doc = *i++ & 0x7F;\n");
+										fprintf(postings_dot_c, "	else\n");
+										fprintf(postings_dot_c, "		{\n");
+										fprintf(postings_dot_c, "		doc = *i++;\n");
+										fprintf(postings_dot_c, "		while (!(*i & 0x80))\n");
+										fprintf(postings_dot_c, "		   doc = (doc << 7) | *i++;\n");
+										fprintf(postings_dot_c, "		doc = (doc << 7) | (*i++ & 0x7F);\n");
+										fprintf(postings_dot_c, "		}\n");
+										fprintf(postings_dot_c, "	sum += doc;\n");
+										fprintf(postings_dot_c, "	add_rsv(sum, %llu);\n", previous_impact);
+										fprintf(postings_dot_c, "	}\n");
+										}
+									else if (static_data)
+										{
+										fprintf(postings_dot_c, "};\n");
+										fprintf(postings_dot_c, "for (uint32_t *i = doclist; i < doclist + %u; i++)\n", docids_in_impact);
+										fprintf(postings_dot_c, "\tadd_rsv(*i, %llu);\n", previous_impact);
+										}
+
 									fprintf(postings_dot_c, "}\n\n");
+									docids_in_impact = 0;
+									}
 
 								fprintf(postings_dot_c, "static void CIt_%s_i_%llu(void)\n{\n", buffer, impact);
+								if (static_data)
+									fprintf(postings_dot_c, "static uint32_t doclist[] = {\n");
+
 								term_method_list << "{" << impact << ", CIt_" << buffer << "_i_" << impact << "},\n";
 								previous_impact = impact;
 								impacts_for_this_term++;
 								}
-							fprintf(postings_dot_c, "add_rsv(%llu, %llu);\n", docid, impact);
+							if (static_data)
+								fprintf(postings_dot_c, "%llu,\n", docid);
+							else if (static_data_compressed)
+								remember(docid);
+							else
+								fprintf(postings_dot_c, "add_rsv(%llu, %llu);\n", docid, impact);
+							docids_in_impact++;
 							}
+						}
+
+					if (static_data_compressed)
+						{
+						uint8_t *data, *byte;
+						uint32_t data_length_in_bytes;
+
+						fprintf(postings_dot_c, "uint32_t doc, sum;\nstatic unsigned char doclist[] = {\n");
+						data = remember_compress(&data_length_in_bytes);
+						for (byte = data; byte < data + data_length_in_bytes; byte++)
+							{
+							fprintf(postings_dot_c, "0x%02X, ", *byte);
+							if (*byte & 0x80)
+								fprintf(postings_dot_c, "\n");
+							}
+
+						fprintf(postings_dot_c, "};\n");
+						fprintf(postings_dot_c, "sum = 0;\n");
+						fprintf(postings_dot_c, "for (uint8_t *i = doclist; i < doclist + %u; i++)\n", data_length_in_bytes);
+						fprintf(postings_dot_c, "	{\n");
+						fprintf(postings_dot_c, "	if (*i & 0x80)\n");
+						fprintf(postings_dot_c, "		doc = *i++ & 0x7F;\n");
+						fprintf(postings_dot_c, "	else\n");
+						fprintf(postings_dot_c, "		{\n");
+						fprintf(postings_dot_c, "		doc = *i++;\n");
+						fprintf(postings_dot_c, "		while (!(*i & 0x80))\n");
+						fprintf(postings_dot_c, "		   doc = (doc << 7) | *i++;\n");
+						fprintf(postings_dot_c, "		doc = (doc << 7) | (*i++ & 0x7F);\n");
+						fprintf(postings_dot_c, "		}\n");
+						fprintf(postings_dot_c, "	sum += doc;\n");
+						fprintf(postings_dot_c, "	add_rsv(sum, %llu);\n", previous_impact);
+						fprintf(postings_dot_c, "	}\n");
+						}
+					else if (static_data)
+						{
+						fprintf(postings_dot_c, "};\n");
+						fprintf(postings_dot_c, "for (uint32_t *i = doclist; i < doclist + %u; i++)\n", docids_in_impact);
+						fprintf(postings_dot_c, "\tadd_rsv(*i, %llu);\n", previous_impact);
+						}
+
 					fprintf(postings_dot_c, "}\n\n");
 					fprintf(postings_dot_c, "%s{0,0}\n};\n\n", term_method_list.str().c_str());
 
