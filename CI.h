@@ -75,7 +75,9 @@ extern const char *CI_doclist[];					// the list of document IDs (TREC document 
 	---------
 	This method cannot be forced inline because when I do so clang generates code that (sometimes) doesn't work!
 */
-static void add_rsv(uint32_t docid, uint16_t score)
+
+//static void add_rsv(uint32_t docid, uint16_t score)
+__forceinline void add_rsv(uint32_t docid, uint16_t score)
 {
 uint16_t old_value;
 uint16_t *which = CI_accumulators + docid;
