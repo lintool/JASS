@@ -481,7 +481,7 @@ fclose(makefile);
 #ifdef _MSC_VER
 	fprintf(makefile_include, "\n\tlib CIt_*.obj /OUT:..\\CIpostings.lib\n\n");
 #else
-	fprintf(makefile_include, "\n\tld -r CIt_*.dylib -o ../CIpostings.o\n\n");
+	fprintf(makefile_include, "\n\ttouch ../CIpostings.o\n\n");
 #endif
 fclose(makefile_include);
 

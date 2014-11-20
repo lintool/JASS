@@ -195,8 +195,8 @@ fprintf(doclist_dot_c, "\n};\n");
 /*
 	Now do the postings lists
 */
-if ((vocab_dot_c = fopen("CIvocab.c", "wb")) == NULL)
-	exit(printf("Cannot open CIvocab.c output file\n"));
+if ((vocab_dot_c = fopen("CIvocab_heap.c", "wb")) == NULL)
+	exit(printf("Cannot open CIvocab_heap.c output file\n"));
 
 fprintf(vocab_dot_c, "#include <stdint.h>\n");
 fprintf(vocab_dot_c, "#include \"CI.h\"\n");
