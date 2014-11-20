@@ -255,7 +255,7 @@ if ((makefile = fopen("CIpostings/makefile", "wb")) == NULL)
 	fprintf(makefile, "include makefile.include\n\n");
 	fprintf(makefile, "CI_FLAGS = -dynamiclib -undefined dynamic_lookup -x c++");
 	if (static_data_compressed || static_data)
-		fprintf(makefile, " -O3");
+		fprintf(makefile, " -O3 -DCI_FORCEINLINE");
 	fprintf(makefile, "\n\n");
 #endif
 

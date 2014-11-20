@@ -1,17 +1,19 @@
+CI_FLAGS = -O3 -x c++ -DCI_FORCEINLINE
+
 all : atire_to_compiled atire_to_heap main_heap main
 
 main : main.c CIvocab.c CIdoclist.c CI.c CI.h CIvocab.c
-	g++ -O3 -o main -x c++ main.c CIdoclist.c CI.c CIvocab.c
+	g++ $(CI_FLAGS) main.c CIdoclist.c CI.c CIvocab.c -o main
 	cd CIpostings ; make ; cd ..
 
 atire_to_compiled : atire_to_compiled.c
-	g++ -O3 -x c++ atire_to_compiled.c -o atire_to_compiled compress_variable_byte.c
+	g++ $(CI_FLAGS) atire_to_compiled.c compress_variable_byte.c -o atire_to_compiled
 
 main_heap : main_heap.c CIvocab_heap.c CIdoclist.c CI.c
-	g++ -O3 -o main_heap -x c++ main_heap.c CIdoclist.c CI.c CIvocab_heap.c
+	g++ $(CI_FLAGS) main_heap.c CIdoclist.c CI.c CIvocab_heap.c -o main_heap
 
 atire_to_heap : atire_to_heap.c
-	g++ -O3 -x c++ atire_to_heap.c -o atire_to_heap compress_variable_byte.c
+	g++ $(CI_FLAGS) atire_to_heap.c compress_variable_byte.c -o atire_to_heap
 
 clean:
 	-rm -rf CIpostings
