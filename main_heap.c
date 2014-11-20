@@ -259,6 +259,18 @@ for (uint8_t *i = doclist; i < doclist + end; i++)
 	add_rsv(sum, impact);
 	}
 }
+/*
+	struct CI_QUANTUM_HEADER
+	------------------------
+*/
+class CI_quantum_header
+{
+public:
+	uint16_t impact;
+	uint64_t offset;
+	uint64_t length;
+} __attribute__((packed));
+
 
 /*
 	PRINT_POSTINGS_LIST()
@@ -269,6 +281,8 @@ for (uint8_t *i = doclist; i < doclist + end; i++)
 */
 void print_postings_list(CI_vocab_heap *postings_list)
 {
+CI_quantum_header *header;
+
 uint32_t current;
 uint16_t impact;
 uint64_t offset;
@@ -285,19 +299,10 @@ puts("");
 data = (uint16_t *)(postings + postings_list->offset);
 for (current = 0; current < postings_list->impacts; current++)
 	{
-	quantum = ((uint8_t *)data) + (data[current]);
+	header = (CI_quantum_header *)(((uint8_t *)data) + (data[current]));
+	printf("OFFSET:%x I:%hx O:%llx l:%llx\n", data[current], header->impact, header->offset, header->length);
 
-	impact = *((uint16_t *)quantum);
-	quantum += sizeof(impact);
-
-	offset = *((uint64_t *)quantum);
-	quantum += sizeof(offset);
-
-	length = *((uint64_t *)quantum);
-
-	printf("OFFSET:%x I:%hx O:%llx l:%llx\n", data[current], impact, offset, length);
-
-	for (uint8_t *byte = postings + postings_list->offset + offset; byte < postings + postings_list->offset + offset + length; byte++)
+	for (uint8_t *byte = (uint8_t *)data + header->offset; byte < (uint8_t *)data + header->offset + header->length; byte++)
 		{
 		printf("0x%02X, ", *byte);
 		if (*byte & 0x80)
@@ -445,7 +450,7 @@ exit(0);
 				/*
 					Copy this term's pointes to the quantum list
 				*/
-				memcpy(current_quantum, postings_list->methods, postings_list->impacts * sizeof(*quantum_order));
+//				memcpy(current_quantum, postings_list->methods, postings_list->impacts * sizeof(*quantum_order));
 
 				/*
 					Compute the maximum possibe impact score (that is, assume one document has the maximum impact of each term)
