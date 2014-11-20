@@ -191,18 +191,6 @@ for (current = 0; current < (output_length < CI_results_list_length ? output_len
 }
 
 /*
-	QUANTUM_COMPARE()
-	-----------------
-*/
-int quantum_compare(const void *a, const void *b)
-{
-CI_impact_method **lhs = (CI_impact_method **)a;
-CI_impact_method **rhs = (CI_impact_method **)b;
-
-return (*lhs)->impact < (*rhs)->impact ? 1 : (*lhs)->impact == (*rhs)->impact ? 0 : -1;
-}
-
-/*
 	READ_ENTIRE_FILE()
 	------------------
 */
@@ -239,12 +227,12 @@ return block;
 	CIT_PROCESS_LIST()
 	------------------
 */
-void CIt_process_list(unsigned char *doclist, uint32_t end, uint32_t impact)
+void CIt_process_list(uint8_t *doclist, uint8_t *end, uint16_t impact)
 {
 uint32_t doc, sum;
 
 sum = 0;
-for (uint8_t *i = doclist; i < doclist + end; i++)
+for (uint8_t *i = doclist; i < end; i++)
 	{
 	if (*i & 0x80)
 		doc = *i++ & 0x7F;
@@ -258,6 +246,7 @@ for (uint8_t *i = doclist; i < doclist + end; i++)
 	sum += doc;
 	add_rsv(sum, impact);
 	}
+fflush(stdout);
 }
 /*
 	struct CI_QUANTUM_HEADER
@@ -268,9 +257,20 @@ class CI_quantum_header
 public:
 	uint16_t impact;
 	uint64_t offset;
-	uint64_t length;
+	uint64_t end;
 } __attribute__((packed));
 
+/*
+	QUANTUM_COMPARE()
+	-----------------
+*/
+int quantum_compare(const void *a, const void *b)
+{
+CI_quantum_header *lhs = (CI_quantum_header *)((*(uint64_t *)a) + postings);
+CI_quantum_header *rhs = (CI_quantum_header *)((*(uint64_t *)b) + postings);
+
+return lhs->impact < rhs->impact ? 1 : lhs->impact == rhs->impact ? 0 : -1;
+}
 
 /*
 	PRINT_POSTINGS_LIST()
@@ -284,26 +284,28 @@ void print_postings_list(CI_vocab_heap *postings_list)
 CI_quantum_header *header;
 
 uint32_t current;
-uint16_t *data;
+uint64_t *data;
 
-printf("offset:%llu\n", postings_list->offset);
-//printf("impacts:%llu\n", postings_list->impacts);
+printf("\n\noffset:0x%llX\n", postings_list->offset);
+printf("impacts:%llu\n", postings_list->impacts);
 for (uint32_t x = 0; x < 64; x++)
 	printf("%02X ", *(postings + postings_list->offset + x));
 puts("");
 
-data = (uint16_t *)(postings + postings_list->offset);
+fflush(stdout);
+data = (uint64_t *)(postings + postings_list->offset);
 for (current = 0; current < postings_list->impacts; current++)
 	{
-	header = (CI_quantum_header *)(((uint8_t *)data) + (data[current]));
-	printf("OFFSET:%x I:%hx O:%llx l:%llx\n", data[current], header->impact, header->offset, header->length);
+	header = (CI_quantum_header *)(postings + (data[current]));
+	printf("OFFSET:%llx I:%hx O:%llx E:%llx\n", data[current], header->impact, header->offset, header->end);
 
-	for (uint8_t *byte = (uint8_t *)data + header->offset; byte < (uint8_t *)data + header->offset + header->length; byte++)
+	for (uint8_t *byte = postings + header->offset; byte < postings + header->end; byte++)
 		{
 		printf("0x%02X, ", *byte);
 		if (*byte & 0x80)
 			printf("\n");
 		}
+	puts("");
 	}
 }
 
@@ -333,11 +335,13 @@ uint32_t accumulators_needed;
 uint64_t stats_quantum_prep_time;
 uint64_t stats_early_terminate_check_time, stats_quantum_check_count, stats_quantum_count, stats_early_terminations;
 uint64_t experimental_repeat = 0, times_to_repeat_experiment = 2;
-struct CI_impact_method **quantum_order, **current_quantum;
+uint64_t *quantum_order, *current_quantum;
 uint64_t max_remaining_impact;
 uint16_t **quantum_check_pointers;
 uint64_t early_terminate;
 uint16_t **partial_rsv;
+CI_quantum_header *current_header;
+
 
 if ((postings = (uint8_t *)read_entire_file("CIpostings.bin")) == NULL)
 	exit(printf("Cannot open postings file 'CIpostings.bin'\n"));
@@ -376,7 +380,7 @@ CI_heap = new ANT_heap<uint16_t *, add_rsv_compare>(*CI_accumulator_pointers, CI
 /*
 	Allocate the quantum at a time table
 */
-quantum_order = new struct CI_impact_method *[MAX_TERMS_PER_QUERY * MAX_QUANTUM];
+quantum_order = new uint64_t [MAX_TERMS_PER_QUERY * MAX_QUANTUM];
 quantum_check_pointers = new uint16_t * [accumulators_needed];
 
 /*
@@ -435,8 +439,7 @@ while (experimental_repeat < times_to_repeat_experiment)
 			postings_list = (CI_vocab_heap *)bsearch(term, CI_dictionary, CI_unique_terms, sizeof(*CI_dictionary), CI_vocab_heap::compare_string);
 			stats_vocab_time += timer_stop(timer);
 
-print_postings_list(postings_list);
-exit(0);
+//print_postings_list(postings_list);
 			/*
 				Initialise the QaaT (Quantum at a Time) structures
 			*/
@@ -444,14 +447,14 @@ exit(0);
 			if (postings_list != NULL)
 				{
 				/*
-					Copy this term's pointes to the quantum list
+					Copy this term's pointers to the quantum list
 				*/
-				memcpy(current_quantum, postings_list->methods, postings_list->impacts * sizeof(*quantum_order));
+				memcpy(current_quantum, postings + postings_list->offset, postings_list->impacts * sizeof(*quantum_order));
 
 				/*
 					Compute the maximum possibe impact score (that is, assume one document has the maximum impact of each term)
 				*/
-				max_remaining_impact += (*current_quantum)->impact;
+				max_remaining_impact += ((CI_quantum_header *)(postings + *current_quantum))->impact;
 
 				/*
 					Advance to the place we want to place the next quantum set
@@ -470,15 +473,16 @@ exit(0);
 		qsort(quantum_order, current_quantum - quantum_order, sizeof(*quantum_order), quantum_compare);
 
 		stats_quantum_prep_time += timer_stop(timer);
-
 		/*
 			Now process each quantum, one at a time
 		*/
-		for (current_quantum = quantum_order; *current_quantum != NULL; current_quantum++)
+		for (current_quantum = quantum_order; *current_quantum != 0; current_quantum++)
 			{
 			stats_quantum_count++;
+
+			current_header = (CI_quantum_header *)(postings + *current_quantum);
 			timer = timer_start();
-			(*(*current_quantum)->method)();
+			CIt_process_list(postings + current_header->offset, postings + current_header->end, current_header->impact);
 			stats_postings_time += timer_stop(timer);
 
 			/*
@@ -488,8 +492,8 @@ exit(0);
 			/*
 				Subtract the current impact score and then add the next impact score for the current term
 			*/
-			max_remaining_impact -= (*current_quantum)->impact;
-			max_remaining_impact += ((*current_quantum) + 1)->impact;
+			max_remaining_impact -= current_header->impact;
+			max_remaining_impact += (current_header + 1)->impact;
 
 			if (CI_results_list_length > CI_top_k - 1)
 				{
