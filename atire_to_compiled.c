@@ -368,7 +368,7 @@ while (fgets(buffer, sizeof(buffer), fp) != NULL)
 
 										fprintf(postings_dot_c, "};\n");
 										fprintf(postings_dot_c, "sum = 0;\n");
-										fprintf(postings_dot_c, "for (uint8_t *i = doclist; i < doclist + %u; i++)\n", data_length_in_bytes);
+										fprintf(postings_dot_c, "for (uint8_t *i = doclist; i < doclist + %u;)\n", data_length_in_bytes);
 										fprintf(postings_dot_c, "	{\n");
 										fprintf(postings_dot_c, "	if (*i & 0x80)\n");
 										fprintf(postings_dot_c, "		doc = *i++ & 0x7F;\n");
@@ -428,7 +428,7 @@ while (fgets(buffer, sizeof(buffer), fp) != NULL)
 
 						fprintf(postings_dot_c, "};\n");
 						fprintf(postings_dot_c, "sum = 0;\n");
-						fprintf(postings_dot_c, "for (uint8_t *i = doclist; i < doclist + %u; i++)\n", data_length_in_bytes);
+						fprintf(postings_dot_c, "for (uint8_t *i = doclist; i < doclist + %u;)\n", data_length_in_bytes);
 						fprintf(postings_dot_c, "	{\n");
 						fprintf(postings_dot_c, "	if (*i & 0x80)\n");
 						fprintf(postings_dot_c, "		doc = *i++ & 0x7F;\n");
