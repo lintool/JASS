@@ -200,7 +200,7 @@ if (argc >= 4)
 				If the user gives me a <topicfile> then put each term into a seperate file.
 			*/
 			seperate_files = true;
-			load_topic_file(argv[3]);
+			load_topic_file(argv[parameter]);
 			}
 	}
 
