@@ -153,7 +153,7 @@ uint64_t line = 0;
 uint64_t cf, df, docid, impact, first_time = true, max_docid = 0, max_q = 0;
 FILE *fp, *vocab_dot_c, *postings_dot_bin, *doclist, *doclist_dot_c;
 uint64_t postings_file_number = 0;
-uint64_t previous_impact, which_impact, unique_terms_in_index = 0;
+uint64_t previous_impact, which_impact, unique_terms_in_index = 0, end;
 uint32_t data_length_in_bytes, quantum;
 uint8_t *data;
 
@@ -200,7 +200,6 @@ if ((vocab_dot_c = fopen("CIvocab.c", "wb")) == NULL)
 
 fprintf(vocab_dot_c, "#include <stdint.h>\n");
 fprintf(vocab_dot_c, "#include \"CI.h\"\n");
-fprintf(vocab_dot_c, "#include \"CIpostings.h\"\n\n");
 fprintf(vocab_dot_c, "class CI_vocab_heap CI_dictionary[] = {\n");
 
 if ((postings_dot_bin = fopen("CIpostings.bin", "wb")) == NULL)
@@ -282,46 +281,49 @@ while (fgets(buffer, sizeof(buffer), fp) != NULL)
 					Tell the vocab where we are
 				*/
 				uint64_t postings_list = ftell(postings_dot_bin);
-				printf("TERM:");
-				puts(buffer);
-				puts("");
 				fprintf(vocab_dot_c, "{\"%s\",%llu, %u},\n", buffer, postings_list, current_quantum);
 
 				/*
 					Write a pointer to each quantum header
 				*/
 				uint32_t header_size = sizeof(postings_offsets->impact) + sizeof(uint64_t) + sizeof(postings_offsets->length);
-				uint16_t quantum_pointer = sizeof(quantum_pointer) * current_quantum;		// start at the end of the list of pointers
+				uint64_t quantum_pointer = sizeof(quantum_pointer) * current_quantum;		// start at the end of the list of pointers
 
-uint64_t here  = ftell(postings_dot_bin);
-
+				quantum_pointer += postings_list;			// offsets are relative to the start of the file
 				for (quantum = 0; quantum < current_quantum; quantum++)
 					{
-					printf("%04x\n", quantum_pointer);
 					fwrite(&quantum_pointer, sizeof(quantum_pointer), 1, postings_dot_bin);
 					quantum_pointer += header_size;										// the next one is this many bytes further on
 					}
 				/*
 					Now write out the quantim headers
 				*/
-				uint64_t offset = (header_size + sizeof(quantum_pointer)) * current_quantum;		// start the data at the end of the quantum headers;
+				uint64_t offset = header_size  * (current_quantum + 1) + sizeof(quantum_pointer) * current_quantum;		// start the data at the end of the quantum headers (which includes a zero termnator);
+				offset += postings_list;					// offset from the start of the file
 				for (quantum = 0; quantum < current_quantum; quantum++)
 					{
 					fwrite(&postings_offsets[quantum].impact, sizeof(postings_offsets[quantum].impact), 1, postings_dot_bin);
 					fwrite(&offset, sizeof(offset), 1, postings_dot_bin);
 
-					printf("I:%04x O:%04llx L:%04llx\n", postings_offsets[quantum].impact, offset, postings_offsets[quantum].length);
+					end = offset + postings_offsets[quantum].length;
+					fwrite(&end, sizeof(end), 1, postings_dot_bin);
 
 					offset += postings_offsets[quantum].length;
-					fwrite(&postings_offsets[quantum].length, sizeof(postings_offsets[quantum].length), 1, postings_dot_bin);
 					}
+					
+				/*
+					Terminate the quantum header list with a bunch of zeros
+				*/
+				uint8_t zero[] = {0,0,  0,0,0,0,0,0,0,0,   0,0,0,0,0,0,0,0};
+				fwrite(&zero, sizeof(zero), 1, postings_dot_bin);
+				
 				/*
 					Now write the compressed postings lists
 				*/
 				for (quantum = 0; quantum < current_quantum; quantum++)
 					{
-printf("actual offset: %04llX\n", ftell(postings_dot_bin) - here);
 					fwrite(postings_offsets[quantum].offset, postings_offsets[quantum].length, 1, postings_dot_bin);
+					delete [] postings_offsets[quantum].offset;
 					}
 				}
 			}
