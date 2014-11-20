@@ -63,10 +63,25 @@ public:
 	static int compare_string(const void *a, const void *b) { return strcmp((char *)a, ((CI_vocab*)b)->term);}
 };
 
+/*
+	class CI_VOCAB_HEAP
+	-------------------
+*/
+class CI_vocab_heap
+{
+public:
+	const char *term;
+	uint64_t offset;
+	uint64_t impacts;
+
+public:
+	static int compare(const void *a, const void *b) { return strcmp(((CI_vocab_heap*)a)->term, ((CI_vocab_heap*)b)->term);}
+	static int compare_string(const void *a, const void *b) { return strcmp((char *)a, ((CI_vocab_heap*)b)->term);}
+} ;
+
 void top_k_qsort(uint16_t **a, long long n, long long top_k);
 
 extern uint32_t CI_unique_terms;					// number of terms in the vocab
-extern CI_vocab CI_dictionary[];					// the vocab array
 extern uint32_t CI_unique_documents;			// number of documents in the collection
 extern const char *CI_doclist[];					// the list of document IDs (TREC document IDs)
 

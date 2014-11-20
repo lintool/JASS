@@ -1,6 +1,6 @@
 /*
-	MAIN.C
-	------
+	MAIN_HEAP.C
+	-----------
 */
 #include <stdio.h>
 #include <stdlib.h>
@@ -19,6 +19,8 @@
 	#include <sys/times.h>
 	#include <dlfcn.h>
 #endif
+#include <sys/types.h>
+#include <sys/stat.h>
 
 #include "CI.h"
 
@@ -34,8 +36,9 @@ uint32_t CI_accumulators_width;			// the "width" of the accumulator table
 uint32_t CI_accumulators_height;		// the "height" of the accumulator table
 ANT_heap<uint16_t *, add_rsv_compare> *CI_heap;
 
-extern CI_vocab CI_dictionary[];					// the vocab array
+extern CI_vocab_heap CI_dictionary[];					// the vocab array
 
+uint8_t *postings;					// the postings themselves
 
 #define MAX_TERMS_PER_QUERY 10
 #define MAX_QUANTUM 0xFF
@@ -200,54 +203,36 @@ return (*lhs)->impact < (*rhs)->impact ? 1 : (*lhs)->impact == (*rhs)->impact ? 
 }
 
 /*
-	LOAD_DYLIBS
-	-----------
-	returns the number of files usccessfully loaded
+	READ_ENTIRE_FILE()
+	------------------
 */
-uint32_t load_dylibs(void)
+char *read_entire_file(const char *filename)
 {
-static char table[1024];
-static glob_t file_list;
-uint32_t file;
-void *handle;
-char *pos;
-CI_vocab *lookup_table;
-uint32_t term_number = 0;
+char *block = NULL;
+FILE *fp;
+struct stat details;
 
-puts("Load Postings");
-chdir("CIpostings");
-glob("*.dylib", GLOB_TILDE, NULL, &file_list);
-for(file = 0; file < file_list.gl_pathc; file++)
-	{
-	handle = dlopen(file_list.gl_pathv[file], RTLD_LAZY);
-	sprintf(table, "CI_dictionary_%s", file_list.gl_pathv[file] + 4);
-	if ((pos = strrchr(table, '.')) != NULL)
-		*pos = '\0';
-	lookup_table = (CI_vocab *)dlsym(handle, table);
+if (filename == NULL)
+	return NULL;
 
-	if (lookup_table == NULL)
-		break;
+if ((fp = fopen(filename, "rb")) == NULL)
+	return NULL;
 
-	while (lookup_table->term != NULL)
-		{
-		memcpy(CI_dictionary + term_number, lookup_table, sizeof(CI_vocab));
-		lookup_table++;
-		term_number++;
-		}
-	}
+if (fstat(fileno(fp), &details) == 0)
+	if (details.st_size != 0)
+		if ((block = new char [(size_t)(details.st_size + 1)]) != NULL)		// +1 for the '\0' on the end
+			{
+			if (fread(block, details.st_size, 1, fp) == 1)
+				block[details.st_size] = '\0';
+			else
+				{
+				delete [] block;
+				block = NULL;
+				}
+			}
+fclose(fp);
 
-globfree(&file_list);
-chdir ("..");
-
-printf("Found %d dylibs\n", (int)file);
-if (term_number != CI_unique_terms)
-	printf("\nWARNING:the dylib term count (%d) does not match the vocab size (%d).  Is this all built from the same index?", term_number, CI_unique_terms);
-
-puts("Sort dictionary");
-qsort(CI_dictionary, CI_unique_terms, sizeof(*CI_dictionary), CI_vocab::compare);
-puts("Done sorting dictionary");
-
-return file;
+return block;
 }
 
 /*
@@ -276,6 +261,52 @@ for (uint8_t *i = doclist; i < doclist + end; i++)
 }
 
 /*
+	PRINT_POSTINGS_LIST()
+	---------------------
+	uint16_t impact;			// the quantum impact score
+	uint64_t offset;			// where the data is
+	uint64_t length;			// length of the compressed postings list (in bytes)
+*/
+void print_postings_list(CI_vocab_heap *postings_list)
+{
+uint32_t current;
+uint16_t impact;
+uint64_t offset;
+uint64_t length;
+uint8_t *quantum;
+uint16_t *data;
+
+printf("offset:%llu\n", postings_list->offset);
+//printf("impacts:%llu\n", postings_list->impacts);
+for (uint32_t x = 0; x < 64; x++)
+	printf("%02X ", *(postings + postings_list->offset + x));
+puts("");
+
+data = (uint16_t *)(postings + postings_list->offset);
+for (current = 0; current < postings_list->impacts; current++)
+	{
+	quantum = ((uint8_t *)data) + (data[current]);
+
+	impact = *((uint16_t *)quantum);
+	quantum += sizeof(impact);
+
+	offset = *((uint64_t *)quantum);
+	quantum += sizeof(offset);
+
+	length = *((uint64_t *)quantum);
+
+	printf("OFFSET:%x I:%hx O:%llx l:%llx\n", data[current], impact, offset, length);
+
+	for (uint8_t *byte = postings + postings_list->offset + offset; byte < postings + postings_list->offset + offset + length; byte++)
+		{
+		printf("0x%02X, ", *byte);
+		if (*byte & 0x80)
+			printf("\n");
+		}
+	}
+}
+
+/*
 	MAIN()
 	------
 */
@@ -288,7 +319,7 @@ const char *SEPERATORS = " \t\r\n";
 FILE *fp, *out;
 char *term, *id;
 uint64_t query_id;
-CI_vocab *postings_list;
+CI_vocab_heap *postings_list;
 uint64_t timer, full_query_without_io_timer;
 uint64_t stats_accumulator_time;
 uint64_t stats_vocab_time;
@@ -307,9 +338,8 @@ uint16_t **quantum_check_pointers;
 uint64_t early_terminate;
 uint16_t **partial_rsv;
 
-
-load_dylibs();
-
+if ((postings = (uint8_t *)read_entire_file("CIpostings.bin")) == NULL)
+	exit(printf("Cannot open postings file 'CIpostings.bin'\n"));
 
 if (argc != 2 && argc != 3)
 	exit(printf("Usage:%s <queryfile> [<top-k-number>]\n", argv[0]));
@@ -401,9 +431,11 @@ while (experimental_repeat < times_to_repeat_experiment)
 		while ((term = strtok(NULL, SEPERATORS)) != NULL)
 			{
 			timer = timer_start();
-			postings_list = (CI_vocab *)bsearch(term, CI_dictionary, CI_unique_terms, sizeof(*CI_dictionary), CI_vocab::compare_string);
+			postings_list = (CI_vocab_heap *)bsearch(term, CI_dictionary, CI_unique_terms, sizeof(*CI_dictionary), CI_vocab_heap::compare_string);
 			stats_vocab_time += timer_stop(timer);
 
+print_postings_list(postings_list);
+exit(0);
 			/*
 				Initialise the QaaT (Quantum at a Time) structures
 			*/
