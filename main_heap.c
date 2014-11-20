@@ -284,10 +284,6 @@ void print_postings_list(CI_vocab_heap *postings_list)
 CI_quantum_header *header;
 
 uint32_t current;
-uint16_t impact;
-uint64_t offset;
-uint64_t length;
-uint8_t *quantum;
 uint16_t *data;
 
 printf("offset:%llu\n", postings_list->offset);
@@ -450,7 +446,7 @@ exit(0);
 				/*
 					Copy this term's pointes to the quantum list
 				*/
-//				memcpy(current_quantum, postings_list->methods, postings_list->impacts * sizeof(*quantum_order));
+				memcpy(current_quantum, postings_list->methods, postings_list->impacts * sizeof(*quantum_order));
 
 				/*
 					Compute the maximum possibe impact score (that is, assume one document has the maximum impact of each term)
