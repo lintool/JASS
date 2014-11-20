@@ -1,4 +1,4 @@
-all : atire_to_compiled atire_to_heap main_heap
+all : atire_to_compiled atire_to_heap main_heap main
 
 main : main.c
 	make -f makefile.ci
