@@ -1,6 +1,0 @@
-main : main.c CIdoclist.c CI.c CI.h CIvocab.c
-	g++ -O3 -g -o main -x c++ main.c CIdoclist.c CI.c CIvocab.c
-
-CIpostings.o : CIpostings/makefile
-	cd CIpostings && make && cd ..
-

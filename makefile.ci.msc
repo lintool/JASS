@@ -1,7 +1,0 @@
-main.exe : main.c CIpostings.lib CIvocab.c CIdoclist.c CI.c CI.h CIpostings.h
-	cl /bigobj /Ot /Tp main.c CIpostings.lib /Tp CIvocab.c /Tp CIdoclist.c /Tp CI.c /link /incremental:no
-
-
-CIpostings.lib : CIpostings/makefile
-	cd CIpostings && make && cd ..
-
