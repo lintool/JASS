@@ -232,7 +232,7 @@ void CIt_process_list(uint8_t *doclist, uint8_t *end, uint16_t impact)
 uint32_t doc, sum;
 
 sum = 0;
-for (uint8_t *i = doclist; i < end; i++)
+for (uint8_t *i = doclist; i < end;)
 	{
 	if (*i & 0x80)
 		doc = *i++ & 0x7F;
@@ -244,10 +244,11 @@ for (uint8_t *i = doclist; i < end; i++)
 		doc = (doc << 7) | (*i++ & 0x7F);
 		}
 	sum += doc;
+	
 	add_rsv(sum, impact);
 	}
-fflush(stdout);
 }
+
 /*
 	struct CI_QUANTUM_HEADER
 	------------------------
@@ -292,7 +293,6 @@ for (uint32_t x = 0; x < 64; x++)
 	printf("%02X ", *(postings + postings_list->offset + x));
 puts("");
 
-fflush(stdout);
 data = (uint64_t *)(postings + postings_list->offset);
 for (current = 0; current < postings_list->impacts; current++)
 	{
@@ -465,7 +465,7 @@ while (experimental_repeat < times_to_repeat_experiment)
 		/*
 			NULL termainate the list of quantums
 		*/
-		*current_quantum = NULL;
+		*current_quantum = 0;
 
 		/*
 			Sort the quantum list from highest to lowest
