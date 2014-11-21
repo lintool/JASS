@@ -224,10 +224,10 @@ return block;
 }
 
 /*
-	CIT_PROCESS_LIST()
-	------------------
+	CIT_PROCESS_LIST_COMPRESSED()
+	-----------------------------
 */
-void CIt_process_list(uint8_t *doclist, uint8_t *end, uint16_t impact)
+void CIt_process_list_compressed(uint8_t *doclist, uint8_t *end, uint16_t impact)
 {
 uint32_t doc, sum;
 
@@ -246,6 +246,20 @@ for (uint8_t *i = doclist; i < end;)
 	sum += doc;
 	
 	add_rsv(sum, impact);
+	}
+}
+
+/*
+	CIT_PROCESS_LIST_NOT_COMPRESSED()
+	---------------------------------
+*/
+void CIt_process_list_not_compressed(uint8_t *doclist, uint8_t *end, uint16_t impact)
+{
+uint32_t *i;
+
+for (i = (uint32_t *)doclist; i < (uint32_t *)end; i++)
+	{
+	add_rsv(*i, impact);
 	}
 }
 
@@ -287,7 +301,7 @@ CI_quantum_header *header;
 uint32_t current;
 uint64_t *data;
 
-printf("\n\noffset:0x%llX\n", postings_list->offset);
+printf("\n\noffset:0x%llX\n", postings_list->offset);  fflush(stdout);
 printf("impacts:%llu\n", postings_list->impacts);
 for (uint32_t x = 0; x < 64; x++)
 	printf("%02X ", *(postings + postings_list->offset + x));
@@ -341,7 +355,7 @@ uint16_t **quantum_check_pointers;
 uint64_t early_terminate;
 uint16_t **partial_rsv;
 CI_quantum_header *current_header;
-
+void (*process_postings_list)(uint8_t *doclist, uint8_t *end, uint16_t impact);
 
 if ((postings = (uint8_t *)read_entire_file("CIpostings.bin")) == NULL)
 	exit(printf("Cannot open postings file 'CIpostings.bin'\n"));
@@ -354,6 +368,16 @@ if ((fp = fopen(argv[1], "r")) == NULL)
 
 if ((out = fopen("ranking.txt", "w")) == NULL )
   exit(printf("Can't open output file.\n"));
+
+/*
+	Sort out how to decode the postings (either compressed or not)
+*/
+if (*postings == 's')
+	process_postings_list = CIt_process_list_not_compressed;
+else if (*postings == 'c')
+	process_postings_list = CIt_process_list_compressed;
+else
+	exit(printf("This index appears to be invalid as it is neither compressed nor not compressed!\n"));
 
 /*
 	Compute the details of the accumulator table
@@ -482,7 +506,7 @@ while (experimental_repeat < times_to_repeat_experiment)
 
 			current_header = (CI_quantum_header *)(postings + *current_quantum);
 			timer = timer_start();
-			CIt_process_list(postings + current_header->offset, postings + current_header->end, current_header->impact);
+			(*process_postings_list)(postings + current_header->offset, postings + current_header->end, current_header->impact);
 			stats_postings_time += timer_stop(timer);
 
 			/*

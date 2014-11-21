@@ -24,9 +24,11 @@
 using namespace std;
 
 uint32_t seperate_files = false;									// set this to false to get all the postings into a single file
-static char buffer[1024 * 1024 * 1024];
 
-char *termlist[1024 * 1024];
+#define BUFFER_SIZE (1024*1024*1024)
+static char *buffer;
+
+char *termlist[1024 * 1024 * 10];
 uint32_t termlist_length = 0;
 
 #define TERMS_PER_SOURCE_CODE_FILE 1000					/* when compiling everything (seperate_files = false) put this numnber of terms in each source code file */
@@ -58,7 +60,7 @@ char *term;
 if ((fp = fopen(filename, "rb")) == NULL)
 	exit(printf("Cannot open ATIRE topic file '%s'\n", filename));
 
-while (fgets(buffer, sizeof(buffer), fp) != NULL)
+while (fgets(buffer, BUFFER_SIZE, fp) != NULL)
 	if ((term = strtok(buffer, SEPERATORS)) != NULL)			// discard the first token as its the topic ID
 		for (term = strtok(NULL, SEPERATORS); term != NULL; term = strtok(NULL, SEPERATORS))
 			termlist[termlist_length++] = strdup(term);
@@ -107,7 +109,7 @@ fclose(fp);
 */
 uint8_t usage(char *filename)
 {
-printf("Usage: %s <index.dump> <docid.aspt> [<topicfile>] [-s|-S]", filename);
+printf("Usage: %s <index.dump> <docid.aspt> [<topicfile>] [-s|-c]", filename);
 puts("Generate index.dump with atire_dictionary > index.dump");
 puts("Generatedocid.aspt with atire_doclist");
 puts("Generate <topicfile> with trec2query <trectopicfile>");
@@ -117,7 +119,7 @@ puts("-c to turn the postings into compressed static data");
 return 1;
 }
 
-#define MAX_DOCIDS_PER_IMPACT (1024*1024)
+#define MAX_DOCIDS_PER_IMPACT (1024 * 1024 * 5)
 
 uint32_t remember_buffer[MAX_DOCIDS_PER_IMPACT];
 uint32_t *remember_into = remember_buffer;
@@ -131,6 +133,8 @@ uint8_t remember_compressed[MAX_DOCIDS_PER_IMPACT * sizeof(uint32_t)];
 void remember(uint32_t docid)
 {
 *remember_into++ = docid;
+if (remember_into > remember_buffer + MAX_DOCIDS_PER_IMPACT)
+	exit(printf("Exceeded the maximum number of postings allowed per quantum... make the constant large"));
 }
 
 /*
@@ -150,7 +154,6 @@ for (uint32_t *current = remember_buffer; current < remember_into; current++)
 	*current -= was;
 	was = is;
 	}
-
 
 /*
 	Now compress
@@ -173,13 +176,16 @@ return remember_compressed;
 int main(int argc, char *argv[])
 {
 uint32_t parameter, static_data, static_data_compressed, docids_in_impact;
-char *end_of_term, *buffer_address = (char *)buffer;
+char *end_of_term, *buffer_address;
 uint64_t line = 0;
 uint64_t cf, df, docid, impact, first_time = true, max_docid = 0, max_q = 0;
 FILE *fp, *vocab_dot_c, *postings_dot_c, *postings_dot_h, *doclist, *doclist_dot_c, *makefile, *makefile_include;
 uint32_t include_postings;
 uint64_t postings_file_number = 0;
 uint64_t previous_impact, impacts_for_this_term, which_impact, unique_terms_in_index = 0;
+
+buffer = new char [1024 * 1024 * 1024];
+buffer_address = buffer;
 
 if (argc <3 || argc > 5)
 	exit(usage(argv[0]));
@@ -222,7 +228,7 @@ if ((doclist_dot_c = fopen("CIdoclist.c", "wb")) == NULL)
 fprintf(doclist_dot_c, "const char *CI_doclist[] =\n{\n");
 
 first_time = true;
-while (fgets(buffer, sizeof(buffer), doclist) != NULL)
+while (fgets(buffer, BUFFER_SIZE, doclist) != NULL)
 	{
 	if (first_time)
 		{
@@ -271,11 +277,11 @@ if ((postings_dot_h = fopen("CIpostings.h", "wb")) == NULL)
 	exit(printf("Cannot open CIpostings.h output file\n"));
 fprintf(postings_dot_h, "#include <stdint.h>\n\n");
 
-while (fgets(buffer, sizeof(buffer), fp) != NULL)
+while (fgets(buffer, BUFFER_SIZE, fp) != NULL)
 	{
 	line++;
 	if (buffer[strlen(buffer) - 1] != '\n')
-		exit(printf("line %lld: no line ending in the first %lu bytes, something is wrong, exiting", line, sizeof(buffer)));
+		exit(printf("line %lld: no line ending in the first %d bytes, something is wrong, exiting", line, BUFFER_SIZE));
 	if (*buffer == '~')
 		continue;
 	if ((end_of_term = strchr(buffer, ' ')) != NULL)
@@ -488,6 +494,8 @@ fclose(makefile_include);
 if (!seperate_files)
 	if (postings_dot_c != NULL)
 		close_postings_dot_c(postings_dot_c);
+
+delete [] buffer;
 
 return 0;
 }
