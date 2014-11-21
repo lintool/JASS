@@ -23,7 +23,8 @@
 
 using namespace std;
 
-static char buffer[1024 * 1024 * 1024];
+#define BUFFER_SIZE (1024*1024*1024)
+static char *buffer;
 
 /*
 	struct CI_HEAP_QUANTUM_INDEXER
@@ -39,7 +40,7 @@ uint64_t length;			// length of the compressed postings list (in bytes)
 static CI_heap_quantum postings_offsets[0x100];
 uint32_t current_quantum;
 
-char *termlist[1024 * 1024];
+char *termlist[1024 * 10];
 uint32_t termlist_length = 0;
 
 ostringstream *vocab_in_current_file = NULL;
@@ -69,7 +70,7 @@ char *term;
 if ((fp = fopen(filename, "rb")) == NULL)
 	exit(printf("Cannot open ATIRE topic file '%s'\n", filename));
 
-while (fgets(buffer, sizeof(buffer), fp) != NULL)
+while (fgets(buffer, BUFFER_SIZE, fp) != NULL)
 	if ((term = strtok(buffer, SEPERATORS)) != NULL)			// discard the first token as its the topic ID
 		for (term = strtok(NULL, SEPERATORS); term != NULL; term = strtok(NULL, SEPERATORS))
 			termlist[termlist_length++] = strdup(term);
@@ -83,16 +84,19 @@ qsort(termlist, termlist_length, sizeof(*termlist), string_compare);
 */
 uint8_t usage(char *filename)
 {
-printf("Usage: %s <index.dump> <docid.aspt> [<topicfile>] [-s|-S]", filename);
+printf("Usage: %s <index.dump> <docid.aspt> [<topicfile>] [-c|-s]", filename);
 puts("Generate index.dump with atire_dictionary > index.dump");
 puts("Generatedocid.aspt with atire_doclist");
 puts("Generate <topicfile> with trec2query <trectopicfile>");
+puts("-c compress the postings (default)");
+puts("-s 'static' not compressed postings");
 
 return 1;
 }
 
-#define MAX_DOCIDS_PER_IMPACT (1024*1024)
+#define MAX_DOCIDS_PER_IMPACT (1024 * 1024 * 5)
 
+uint32_t remember_should_compress = true;
 uint32_t remember_buffer[MAX_DOCIDS_PER_IMPACT];
 uint32_t *remember_into = remember_buffer;
 ANT_compress_variable_byte compressor;
@@ -105,6 +109,9 @@ uint8_t remember_compressed[MAX_DOCIDS_PER_IMPACT * sizeof(uint32_t)];
 void remember(uint32_t docid)
 {
 *remember_into++ = docid;
+
+if (remember_into > remember_buffer + MAX_DOCIDS_PER_IMPACT)
+	exit(printf("Exceeded the maximum number of postings allowed per quantum... make the constant large"));
 }
 
 /*
@@ -115,23 +122,28 @@ uint8_t *remember_compress(uint32_t *length)
 {
 uint32_t is, was;
 
-/*
-	Compute deltas
-*/
-was = 0;
-for (uint32_t *current = remember_buffer; current < remember_into; current++)
+if (!remember_should_compress)
+	memcpy(remember_compressed, remember_buffer, *length = (sizeof(*remember_buffer) * (remember_into - remember_buffer)));
+else
 	{
-	is = *current;
-	*current -= was;
-	was = is;
+	/*
+		Compute deltas
+	*/
+	was = 0;
+	for (uint32_t *current = remember_buffer; current < remember_into; current++)
+		{
+		is = *current;
+		*current -= was;
+		was = is;
+		}
+
+
+	/*
+		Now compress
+	*/
+	if ((*length = compressor.compress(remember_compressed, sizeof(remember_compressed), remember_buffer, remember_into - remember_buffer)) <= 0)
+		exit(printf("Can't compress\n"));
 	}
-
-
-/*
-	Now compress
-*/
-if ((*length = compressor.compress(remember_compressed, sizeof(remember_compressed), remember_buffer, remember_into - remember_buffer)) <= 0)
-	exit(printf("Can't compress\n"));
 
 /*
 	rewind the buffer
@@ -148,21 +160,29 @@ return remember_compressed;
 int main(int argc, char *argv[])
 {
 uint32_t docids_in_impact;
-char *end_of_term, *buffer_address = (char *)buffer;
+char *end_of_term, *buffer_address;
 uint64_t line = 0;
 uint64_t cf, df, docid, impact, first_time = true, max_docid = 0, max_q = 0;
 FILE *fp, *vocab_dot_c, *postings_dot_bin, *doclist, *doclist_dot_c;
 uint64_t postings_file_number = 0;
 uint64_t previous_impact, which_impact, unique_terms_in_index = 0, end;
-uint32_t data_length_in_bytes, quantum;
+uint32_t data_length_in_bytes, quantum, parameter;
 uint8_t *data;
+uint8_t file_mode;
 
+buffer = new char [1024 * 1024 * 1024];
+buffer_address = buffer;
 
 if (argc <3 || argc > 5)
 	exit(usage(argv[0]));
 
-if (argc == 4)
-	load_topic_file(argv[3]);
+for (parameter = 3; parameter < argc; parameter++)
+	if (strcmp(argv[parameter], "-s") == 0)
+		remember_should_compress = false;
+	else if (strcmp(argv[parameter], "-c") == 0)
+		remember_should_compress = true;
+	else
+		load_topic_file(argv[parameter]);
 
 if ((fp = fopen(argv[1], "rb")) == NULL)
 	exit(printf("Cannot open input file '%s'\n", argv[1]));
@@ -179,7 +199,7 @@ if ((doclist_dot_c = fopen("CIdoclist.c", "wb")) == NULL)
 fprintf(doclist_dot_c, "const char *CI_doclist[] =\n{\n");
 
 first_time = true;
-while (fgets(buffer, sizeof(buffer), doclist) != NULL)
+while (fgets(buffer, BUFFER_SIZE, doclist) != NULL)
 	{
 	if (first_time)
 		{
@@ -191,6 +211,7 @@ while (fgets(buffer, sizeof(buffer), doclist) != NULL)
 	}
 
 fprintf(doclist_dot_c, "\n};\n");
+fclose(doclist_dot_c);
 
 /*
 	Now do the postings lists
@@ -205,11 +226,14 @@ fprintf(vocab_dot_c, "class CI_vocab_heap CI_dictionary[] = {\n");
 if ((postings_dot_bin = fopen("CIpostings.bin", "wb")) == NULL)
 	exit(printf("Cannot open CIpostings.h output file\n"));
 
-while (fgets(buffer, sizeof(buffer), fp) != NULL)
+file_mode = remember_should_compress ? 'c' : 's';		// c for comprssed using Variable Byte; s for static uncompressed
+fwrite(&file_mode, 1, 1, postings_dot_bin);
+
+while (fgets(buffer, BUFFER_SIZE, fp) != NULL)
 	{
 	line++;
 	if (buffer[strlen(buffer) - 1] != '\n')
-		exit(printf("line %lld: no line ending in the first %lu bytes, something is wrong, exiting", line, sizeof(buffer)));
+		exit(printf("line %lld: no line ending in the first %d bytes, something is wrong, exiting", line, BUFFER_SIZE));
 	if (*buffer == '~')
 		continue;
 
@@ -282,7 +306,7 @@ while (fgets(buffer, sizeof(buffer), fp) != NULL)
 				*/
 				uint64_t postings_list = ftell(postings_dot_bin);
 				fprintf(vocab_dot_c, "{\"%s\",%llu, %u},\n", buffer, postings_list, current_quantum);
-
+	
 				/*
 					Write a pointer to each quantum header
 				*/
@@ -338,6 +362,8 @@ fprintf(vocab_dot_c, "uint32_t CI_max_q = %llu;\n", max_q);
 fclose(vocab_dot_c);
 fclose(fp);
 fclose(postings_dot_bin);
+
+delete [] buffer;
 
 return 0;
 }
