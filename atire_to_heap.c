@@ -177,6 +177,17 @@ buffer_address = buffer;
 if (argc <3 || argc > 5)
 	exit(usage(argv[0]));
 
+
+/*
+	Defailt is Variable Byte
+*/
+file_mode = 'c';
+remember_should_compress = true;
+compressor = new ANT_compress_variable_byte;
+
+/*
+	Check the parametes to see if are anything else
+*/
 for (parameter = 3; parameter < argc; parameter++)
 	if (strcmp(argv[parameter], "-s") == 0)
 		{
