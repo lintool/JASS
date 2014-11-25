@@ -14,6 +14,7 @@
 
 #include "compress_variable_byte.h"
 #include "compress_simple8b.h"
+#include "compress_qmx.h"
 
 #ifdef _MSC_VER
 	#include <direct.h>
@@ -89,9 +90,10 @@ printf("Usage: %s <index.dump> <docid.aspt> [<topicfile>] [-c|-s]", filename);
 puts("Generate index.dump with atire_dictionary > index.dump");
 puts("Generatedocid.aspt with atire_doclist");
 puts("Generate <topicfile> with trec2query <trectopicfile>");
-puts("-8 compress the postings using simple 8b\n");
+puts("-8 compress the postings using simple 8b");
 puts("-c compress the postings using Variable Byte Encoding (default)");
 puts("-s 'static' do not compress the postings");
+puts("-q compress the postings using QMX");
 
 return 1;
 }
@@ -103,6 +105,7 @@ uint32_t remember_buffer[MAX_DOCIDS_PER_IMPACT];
 uint32_t *remember_into = remember_buffer;
 ANT_compress *compressor;
 uint8_t remember_compressed[MAX_DOCIDS_PER_IMPACT * sizeof(uint32_t)];
+uint32_t sse_alignment = 0;
 
 /*
 	REMEMBER()
@@ -122,7 +125,7 @@ if (remember_into > remember_buffer + MAX_DOCIDS_PER_IMPACT)
 */
 uint8_t *remember_compress(uint32_t *length)
 {
-uint32_t is, was;
+uint32_t is, was, compressed_size;
 
 if (!remember_should_compress)
 	memcpy(remember_compressed, remember_buffer, *length = (sizeof(*remember_buffer) * (remember_into - remember_buffer)));
@@ -142,8 +145,17 @@ else
 	/*
 		Now compress
 	*/
-	if ((*length = compressor->compress(remember_compressed, sizeof(remember_compressed), remember_buffer, remember_into - remember_buffer)) <= 0)
+	compressed_size = compressor->compress(remember_compressed, sizeof(remember_compressed), remember_buffer, remember_into - remember_buffer);
+	if (compressed_size <= 0)
 		exit(printf("Can't compress\n"));
+
+	/*
+		If we need to SSE-word align then do so
+	*/
+	if (sse_alignment != 0)
+		compressed_size = ((compressed_size + sse_alignment - 1) / sse_alignment) * sse_alignment;
+
+	*length = compressed_size;
 	}
 
 /*
@@ -170,6 +182,8 @@ uint64_t previous_impact, which_impact, unique_terms_in_index = 0, end;
 uint32_t data_length_in_bytes, quantum, parameter;
 uint8_t *data;
 uint8_t file_mode;
+
+uint32_t sse_alignment = 0;
 
 buffer = new char [1024 * 1024 * 1024];
 buffer_address = buffer;
@@ -200,12 +214,21 @@ for (parameter = 3; parameter < argc; parameter++)
 		remember_should_compress = true;
 		compressor = new ANT_compress_simple8b;
 		}
+	else if (strcmp(argv[parameter], "-q") == 0)
+		{
+		file_mode = 'q';
+		remember_should_compress = true;
+		compressor = new ANT_compress_qmx;
+		sse_alignment = 16;
+		}
 	else if (strcmp(argv[parameter], "-c") == 0)
 		{
 		file_mode = 'c';
 		remember_should_compress = true;
 		compressor = new ANT_compress_variable_byte;
 		}
+	else if (strcmp(argv[parameter], "-SSE") == 0)
+		sse_alignment = 16;
 	else
 		load_topic_file(argv[parameter]);
 
@@ -352,8 +375,17 @@ while (fgets(buffer, BUFFER_SIZE, fp) != NULL)
 				/*
 					Now write out the quantim headers
 				*/
+				uint64_t sse_offset, sse_padding;
 				uint64_t offset = header_size  * (current_quantum + 1) + sizeof(quantum_pointer) * current_quantum;		// start the data at the end of the quantum headers (which includes a zero termnator);
 				offset += postings_list;					// offset from the start of the file
+
+				if (sse_alignment != 0)
+					{
+					sse_offset = ((offset + sse_alignment - 1) / sse_alignment) * sse_alignment;
+					sse_padding = sse_offset - offset;
+					offset = sse_offset;
+					}
+
 				for (quantum = 0; quantum < current_quantum; quantum++)
 					{
 					fwrite(&postings_offsets[quantum].impact, sizeof(postings_offsets[quantum].impact), 1, postings_dot_bin);
@@ -370,7 +402,14 @@ while (fgets(buffer, BUFFER_SIZE, fp) != NULL)
 				*/
 				uint8_t zero[] = {0,0,  0,0,0,0,0,0,0,0,   0,0,0,0,0,0,0,0};
 				fwrite(&zero, sizeof(zero), 1, postings_dot_bin);
-				
+
+				if (sse_alignment != 0 && sse_padding != 0)
+					{
+					if (sse_padding > sizeof(zero))
+						exit(printf("Padding is too large, fix the source code (sorry)\n"));
+					fwrite(zero, sse_padding, 1, postings_dot_bin);
+					}
+
 				/*
 					Now write the compressed postings lists
 				*/

@@ -281,6 +281,37 @@ while (integer < destination)
 }
 
 /*
+	CIT_PROCESS_LIST_COMPRESSED_QMX()
+	---------------------------------
+*/
+void CIt_process_list_compressed_qmx(uint8_t *source, uint8_t *end, uint16_t impact)
+{
+uint32_t doc, sum;
+uint32_t *integer, *destination = CI_decompressed_postings;
+
+while (source < end)
+	if (*source & 0x80)
+		*destination++ = *source++ & 0x7F;
+	else
+		{
+		*destination = *source++;
+		while (!(*source & 0x80))
+		   *destination = (*destination << 7) | *source++;
+		*destination = (*destination << 7) | (*source++ & 0x7F);
+		destination++;
+		}
+
+sum = 0;
+integer = CI_decompressed_postings;
+while (integer < destination)
+	{
+	sum += *integer++;
+	add_rsv(sum, impact);
+	}
+}
+
+
+/*
 	CIT_PROCESS_LIST_NOT_COMPRESSED()
 	---------------------------------
 */
@@ -1016,6 +1047,11 @@ else if (*postings == '8')
 	{
 	puts("Simple-8b Compressed Index");
 	process_postings_list = CIt_process_list_compressed_simple8b;
+	}
+else if (*postings == 'q')
+	{
+	puts("QMX Compressed Index");
+	process_postings_list = CIt_process_list_compressed_qmx;
 	}
 else
 	exit(printf("This index appears to be invalid as it is neither compressed nor not compressed!\n"));
