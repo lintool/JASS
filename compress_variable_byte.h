@@ -17,8 +17,8 @@ public:
 	ANT_compress_variable_byte() {}
 	virtual ~ANT_compress_variable_byte() {}
 
-	virtual long long compress(unsigned char *destination, long long destination_length, ANT_compressable_integer *source, long long source_integers);
-	virtual void decompress(ANT_compressable_integer *destination, unsigned char *source, long long destination_integers);
+	virtual long long compress(unsigned char *destination, long long destination_length, uint32_t *source, long long source_integers);
+	virtual void decompress(uint32_t *destination, unsigned char *source, long long destination_integers);
 
 	static inline long compress_bytes_needed(long long docno);
 	static inline void compress_into(unsigned char *dest, long long docno);

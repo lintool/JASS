@@ -108,7 +108,7 @@ long ANT_compress_simple8b::row_for_bits_needed[] =
 	ANT_COMPRESS_SIMPLE8B::COMPRESS()
 	--------------------------------
 */
-long long ANT_compress_simple8b::compress(unsigned char *destination, long long destination_length, ANT_compressable_integer *source, long long source_integers)
+long long ANT_compress_simple8b::compress(unsigned char *destination, long long destination_length, uint32_t *source, long long source_integers)
 {
 long long words_in_compressed_string, pos;
 uint32_t mask_type, num_to_pack;
@@ -158,12 +158,12 @@ return words_in_compressed_string * sizeof(*into); //stores the length of n[]
 	ANT_COMPRESS_SIMPLE8B::DECOMPRESS()
 	----------------------------------
 */
-void ANT_compress_simple8b::decompress(ANT_compressable_integer *destination, unsigned char *source, long long destination_integers)
+void ANT_compress_simple8b::decompress(uint32_t *destination, unsigned char *source, long long destination_integers)
 {
 uint64_t *compressed_sequence = (uint64_t *)source;
 uint32_t mask_type;
 uint64_t value;
-ANT_compressable_integer *end = destination + destination_integers;
+uint32_t *end = destination + destination_integers;
 
 while (destination < end)
 	{

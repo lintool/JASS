@@ -8,9 +8,9 @@
 	ANT_COMPRESS_VARIABLE_BYTE::COMPRESS()
 	--------------------------------------
 */
-long long ANT_compress_variable_byte::compress(unsigned char *destination, long long destination_length, ANT_compressable_integer *source, long long source_integers)
+long long ANT_compress_variable_byte::compress(unsigned char *destination, long long destination_length, uint32_t *source, long long source_integers)
 {
-ANT_compressable_integer *current, *end;
+uint32_t *current, *end;
 long needed;
 long long used = 0;
 
@@ -31,9 +31,9 @@ return used;
 	ANT_COMPRESS_VARIABLE_BYTE::DECOMPRESS()
 	----------------------------------------
 */
-void ANT_compress_variable_byte::decompress(ANT_compressable_integer *destination, unsigned char *source, long long destination_integers)
+void ANT_compress_variable_byte::decompress(uint32_t *destination, unsigned char *source, long long destination_integers)
 {
-ANT_compressable_integer *end;
+uint32_t *end;
 
 end = destination + destination_integers;
 
