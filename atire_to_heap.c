@@ -13,6 +13,7 @@
 #include <limits.h>
 
 #include "compress_variable_byte.h"
+#include "compress_simple8b.h"
 
 #ifdef _MSC_VER
 	#include <direct.h>
@@ -88,8 +89,9 @@ printf("Usage: %s <index.dump> <docid.aspt> [<topicfile>] [-c|-s]", filename);
 puts("Generate index.dump with atire_dictionary > index.dump");
 puts("Generatedocid.aspt with atire_doclist");
 puts("Generate <topicfile> with trec2query <trectopicfile>");
-puts("-c compress the postings (default)");
-puts("-s 'static' not compressed postings");
+puts("-8 compress the postings using simple 8b\n");
+puts("-c compress the postings using Variable Byte Encoding (default)");
+puts("-s 'static' do not compress the postings");
 
 return 1;
 }
@@ -99,7 +101,7 @@ return 1;
 uint32_t remember_should_compress = true;
 uint32_t remember_buffer[MAX_DOCIDS_PER_IMPACT];
 uint32_t *remember_into = remember_buffer;
-ANT_compress_variable_byte compressor;
+ANT_compress *compressor;
 uint8_t remember_compressed[MAX_DOCIDS_PER_IMPACT * sizeof(uint32_t)];
 
 /*
@@ -137,11 +139,10 @@ else
 		was = is;
 		}
 
-
 	/*
 		Now compress
 	*/
-	if ((*length = compressor.compress(remember_compressed, sizeof(remember_compressed), remember_buffer, remember_into - remember_buffer)) <= 0)
+	if ((*length = compressor->compress(remember_compressed, sizeof(remember_compressed), remember_buffer, remember_into - remember_buffer)) <= 0)
 		exit(printf("Can't compress\n"));
 	}
 
@@ -178,9 +179,22 @@ if (argc <3 || argc > 5)
 
 for (parameter = 3; parameter < argc; parameter++)
 	if (strcmp(argv[parameter], "-s") == 0)
+		{
+		file_mode = 's';
 		remember_should_compress = false;
-	else if (strcmp(argv[parameter], "-c") == 0)
+		}
+	else if (strcmp(argv[parameter], "-8") == 0)
+		{
+		file_mode = '8';
 		remember_should_compress = true;
+		compressor = new ANT_compress_simple8b;
+		}
+	else if (strcmp(argv[parameter], "-c") == 0)
+		{
+		file_mode = 'c';
+		remember_should_compress = true;
+		compressor = new ANT_compress_variable_byte;
+		}
 	else
 		load_topic_file(argv[parameter]);
 
@@ -226,9 +240,14 @@ fprintf(vocab_dot_c, "class CI_vocab_heap CI_dictionary[] = {\n");
 if ((postings_dot_bin = fopen("CIpostings.bin", "wb")) == NULL)
 	exit(printf("Cannot open CIpostings.h output file\n"));
 
-file_mode = remember_should_compress ? 'c' : 's';		// c for comprssed using Variable Byte; s for static uncompressed
+/*
+	Tell the postings list which compression strategy is being used
+*/
 fwrite(&file_mode, 1, 1, postings_dot_bin);
 
+/*
+	Now generate the file
+*/
 while (fgets(buffer, BUFFER_SIZE, fp) != NULL)
 	{
 	line++;
