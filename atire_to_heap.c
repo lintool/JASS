@@ -34,9 +34,11 @@ static char *buffer;
 */
 struct CI_heap_quantum
 {
-uint16_t impact;			// the quantum impact score
-uint8_t *offset;			// where the data is
-uint64_t length;			// length of the compressed postings list (in bytes)
+uint16_t impact;						// the quantum impact score
+uint8_t *offset;						// where the data is
+uint64_t length;						// length of the compressed postings list (in bytes)
+uint64_t length_with_padding;		// length of the compressed postings list (in bytes) (plus any necessary SSE padding)
+uint32_t quantum_frequency;		// number of integers in the quantum (needed by QMX and ant ATIRE based decompressors)
 } ;
 
 static CI_heap_quantum postings_offsets[0x100];
@@ -123,12 +125,14 @@ if (remember_into > remember_buffer + MAX_DOCIDS_PER_IMPACT)
 	REMEMBER_COMPRESS()
 	-------------------
 */
-uint8_t *remember_compress(uint32_t *length)
+uint8_t *remember_compress(uint32_t *length, uint32_t *padded_length, uint32_t *integers_in_quantum)
 {
 uint32_t is, was, compressed_size;
 
+*integers_in_quantum = remember_into - remember_buffer;
+
 if (!remember_should_compress)
-	memcpy(remember_compressed, remember_buffer, *length = (sizeof(*remember_buffer) * (remember_into - remember_buffer)));
+	memcpy(remember_compressed, remember_buffer, compressed_size = (sizeof(*remember_buffer) * (remember_into - remember_buffer)));
 else
 	{
 	/*
@@ -146,17 +150,18 @@ else
 		Now compress
 	*/
 	compressed_size = compressor->compress(remember_compressed, sizeof(remember_compressed), remember_buffer, remember_into - remember_buffer);
+	
 	if (compressed_size <= 0)
 		exit(printf("Can't compress\n"));
-
-	/*
-		If we need to SSE-word align then do so
-	*/
-	if (sse_alignment != 0)
-		compressed_size = ((compressed_size + sse_alignment - 1) / sse_alignment) * sse_alignment;
-
-	*length = compressed_size;
 	}
+	
+/*
+	If we need to SSE-word align then do so
+*/
+*length = compressed_size;
+if (sse_alignment != 0)
+	compressed_size = ((compressed_size + sse_alignment - 1) / sse_alignment) * sse_alignment;
+*padded_length = compressed_size;
 
 /*
 	rewind the buffer
@@ -179,11 +184,9 @@ uint64_t cf, df, docid, impact, first_time = true, max_docid = 0, max_q = 0;
 FILE *fp, *vocab_dot_c, *postings_dot_bin, *doclist, *doclist_dot_c;
 uint64_t postings_file_number = 0;
 uint64_t previous_impact, which_impact, unique_terms_in_index = 0, end;
-uint32_t data_length_in_bytes, quantum, parameter;
+uint32_t data_length_in_bytes, data_length_in_bytes_with_padding, quantum, parameter;
 uint8_t *data;
 uint8_t file_mode;
-
-uint32_t sse_alignment = 0;
 
 buffer = new char [1024 * 1024 * 1024];
 buffer_address = buffer;
@@ -191,9 +194,8 @@ buffer_address = buffer;
 if (argc <3 || argc > 5)
 	exit(usage(argv[0]));
 
-
 /*
-	Defailt is Variable Byte
+	Default is Variable Byte
 */
 file_mode = 'c';
 remember_should_compress = true;
@@ -326,11 +328,12 @@ while (fgets(buffer, BUFFER_SIZE, fp) != NULL)
 							{
 							if (previous_impact != ULONG_MAX)
 								{
-								data = remember_compress(&data_length_in_bytes);
+								data = remember_compress(&data_length_in_bytes, &data_length_in_bytes_with_padding, &postings_offsets[current_quantum].quantum_frequency);
 								postings_offsets[current_quantum].impact = previous_impact;
 								postings_offsets[current_quantum].offset = new uint8_t [data_length_in_bytes];
 								memcpy(postings_offsets[current_quantum].offset, data, data_length_in_bytes);
 								postings_offsets[current_quantum].length = data_length_in_bytes;
+								postings_offsets[current_quantum].length_with_padding = data_length_in_bytes_with_padding;
 								sum_of_lengths += data_length_in_bytes;
 								current_quantum++;
 								}
@@ -343,11 +346,12 @@ while (fgets(buffer, BUFFER_SIZE, fp) != NULL)
 				/*
 					Don't forget the final quantum
 				*/
-				data = remember_compress(&data_length_in_bytes);
+				data = remember_compress(&data_length_in_bytes, &data_length_in_bytes_with_padding, &postings_offsets[current_quantum].quantum_frequency);
 				postings_offsets[current_quantum].impact = impact;
 				postings_offsets[current_quantum].offset = new uint8_t [data_length_in_bytes];
 				memcpy(postings_offsets[current_quantum].offset, data, data_length_in_bytes);
 				postings_offsets[current_quantum].length = data_length_in_bytes;
+				postings_offsets[current_quantum].length_with_padding = data_length_in_bytes_with_padding;
 				sum_of_lengths += data_length_in_bytes;
 				current_quantum++;
 
@@ -363,7 +367,7 @@ while (fgets(buffer, BUFFER_SIZE, fp) != NULL)
 				/*
 					Write a pointer to each quantum header
 				*/
-				uint32_t header_size = sizeof(postings_offsets->impact) + sizeof(uint64_t) + sizeof(postings_offsets->length);
+				uint32_t header_size = sizeof(postings_offsets->impact) + sizeof(uint64_t) + sizeof(postings_offsets->length) + sizeof(postings_offsets->quantum_frequency);
 				uint64_t quantum_pointer = sizeof(quantum_pointer) * current_quantum;		// start at the end of the list of pointers
 
 				quantum_pointer += postings_list;			// offsets are relative to the start of the file
@@ -394,14 +398,16 @@ while (fgets(buffer, BUFFER_SIZE, fp) != NULL)
 					end = offset + postings_offsets[quantum].length;
 					fwrite(&end, sizeof(end), 1, postings_dot_bin);
 
-					offset += postings_offsets[quantum].length;
+					fwrite(&postings_offsets[quantum].quantum_frequency, sizeof(postings_offsets[quantum].quantum_frequency), 1, postings_dot_bin);
+
+					offset += postings_offsets[quantum].length_with_padding;
 					}
 					
 				/*
 					Terminate the quantum header list with a bunch of zeros
 				*/
-				uint8_t zero[] = {0,0,  0,0,0,0,0,0,0,0,   0,0,0,0,0,0,0,0};
-				fwrite(&zero, sizeof(zero), 1, postings_dot_bin);
+				uint8_t zero[] = {0,0,  0,0,0,0,0,0,0,0,   0,0,0,0,0,0,0,0,   0,0,0,0};
+				fwrite(&zero, header_size, 1, postings_dot_bin);
 
 				if (sse_alignment != 0 && sse_padding != 0)
 					{
@@ -415,7 +421,7 @@ while (fgets(buffer, BUFFER_SIZE, fp) != NULL)
 				*/
 				for (quantum = 0; quantum < current_quantum; quantum++)
 					{
-					fwrite(postings_offsets[quantum].offset, postings_offsets[quantum].length, 1, postings_dot_bin);
+					fwrite(postings_offsets[quantum].offset, postings_offsets[quantum].length_with_padding, 1, postings_dot_bin);
 					delete [] postings_offsets[quantum].offset;
 					}
 				}
