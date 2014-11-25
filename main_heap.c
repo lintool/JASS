@@ -21,9 +21,11 @@
 #endif
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <emmintrin.h>
+#include <smmintrin.h>
 
 #include "CI.h"
-
+#include "compress_qmx.h"
 
 uint16_t *CI_accumulators;				// the accumulators
 uint16_t **CI_accumulator_pointers;	// an array of pointers into the accumulators (used to avoid computing docIDs)
@@ -37,9 +39,10 @@ uint32_t CI_accumulators_height;		// the "height" of the accumulator table
 ANT_heap<uint16_t *, add_rsv_compare> *CI_heap;
 
 extern CI_vocab_heap CI_dictionary[];					// the vocab array
-uint32_t *CI_decompressed_postings;
 
-uint8_t *postings;					// the postings themselves
+#define ALIGN_16 __attribute__ ((aligned (16)))
+ALIGN_16 uint32_t *CI_decompressed_postings;
+ALIGN_16 uint8_t *postings;					// the postings themselves
 
 #define MAX_TERMS_PER_QUERY 10
 #define MAX_QUANTUM 0xFF
@@ -66,7 +69,6 @@ uint8_t *postings;					// the postings themselves
 	return (uint64_t)hi << 32 | lo;
 	}
 #endif
-
 
 /*
 	TIMER_START()
@@ -228,7 +230,7 @@ return block;
 	CIT_PROCESS_LIST_COMPRESSED_VBYTE()
 	-----------------------------------
 */
-void CIt_process_list_compressed_vbyte(uint8_t *doclist, uint8_t *end, uint16_t impact)
+void CIt_process_list_compressed_vbyte(uint8_t *doclist, uint8_t *end, uint16_t impact, uint32_t integers)
 {
 uint32_t doc, sum;
 
@@ -254,7 +256,7 @@ for (uint8_t *i = doclist; i < end;)
 	CIT_PROCESS_LIST_DECOMPRESS_THEN_PROCESS()
 	------------------------------------------
 */
-void CIt_process_list_decompress_then_process(uint8_t *source, uint8_t *end, uint16_t impact)
+void CIt_process_list_decompress_then_process(uint8_t *source, uint8_t *end, uint16_t impact, uint32_t integers)
 {
 uint32_t doc, sum;
 uint32_t *integer, *destination = CI_decompressed_postings;
@@ -279,43 +281,12 @@ while (integer < destination)
 	add_rsv(sum, impact);
 	}
 }
-
-/*
-	CIT_PROCESS_LIST_COMPRESSED_QMX()
-	---------------------------------
-*/
-void CIt_process_list_compressed_qmx(uint8_t *source, uint8_t *end, uint16_t impact)
-{
-uint32_t doc, sum;
-uint32_t *integer, *destination = CI_decompressed_postings;
-
-while (source < end)
-	if (*source & 0x80)
-		*destination++ = *source++ & 0x7F;
-	else
-		{
-		*destination = *source++;
-		while (!(*source & 0x80))
-		   *destination = (*destination << 7) | *source++;
-		*destination = (*destination << 7) | (*source++ & 0x7F);
-		destination++;
-		}
-
-sum = 0;
-integer = CI_decompressed_postings;
-while (integer < destination)
-	{
-	sum += *integer++;
-	add_rsv(sum, impact);
-	}
-}
-
 
 /*
 	CIT_PROCESS_LIST_NOT_COMPRESSED()
 	---------------------------------
 */
-void CIt_process_list_not_compressed(uint8_t *doclist, uint8_t *end, uint16_t impact)
+void CIt_process_list_not_compressed(uint8_t *doclist, uint8_t *end, uint16_t impact, uint32_t integers)
 {
 uint32_t *i;
 
@@ -323,11 +294,33 @@ for (i = (uint32_t *)doclist; i < (uint32_t *)end; i++)
 	add_rsv(*i, impact);
 }
 
+ANT_compress_qmx qmx_decoder;
+
+/*
+	CIT_PROCESS_LIST_COMPRESSED_QMX()
+	---------------------------------
+*/
+void CIt_process_list_compressed_qmx(uint8_t *source, uint8_t *end, uint16_t impact, uint32_t integers)
+{
+uint32_t sum, *finish, *current;
+
+qmx_decoder.decodeArray((uint32_t *)source, end - source, CI_decompressed_postings, integers);
+
+sum = 0;
+current = CI_decompressed_postings;
+finish = current + integers;
+while (current < finish)
+	{
+	sum += *current++;
+	add_rsv(sum, impact);
+	}
+}
+
 /*
 	CIT_PROCESS_LIST_COMPRESSED_SIMPLE8B()
 	--------------------------------------
 */
-void CIt_process_list_compressed_simple8b(uint8_t *source, uint8_t *end, uint16_t impact)
+void CIt_process_list_compressed_simple8b(uint8_t *source, uint8_t *end, uint16_t impact, uint32_t integers)
 {
 uint64_t *compressed_sequence = (uint64_t *)source;
 uint32_t mask_type, sum;
@@ -933,6 +926,7 @@ public:
 	uint16_t impact;
 	uint64_t offset;
 	uint64_t end;
+	uint32_t quantum_frequency;
 } __attribute__((packed));
 
 /*
@@ -971,7 +965,7 @@ data = (uint64_t *)(postings + postings_list->offset);
 for (current = 0; current < postings_list->impacts; current++)
 	{
 	header = (CI_quantum_header *)(postings + (data[current]));
-	printf("OFFSET:%llx I:%hx O:%llx E:%llx\n", data[current], header->impact, header->offset, header->end);
+	printf("OFFSET:%llx Impact:%hx Offset:%llx End:%llx docids:%u\n", data[current], header->impact, header->offset, header->end, header->quantum_frequency);
 
 	for (uint8_t *byte = postings + header->offset; byte < postings + header->end; byte++)
 		{
@@ -1015,7 +1009,7 @@ uint16_t **quantum_check_pointers;
 uint64_t early_terminate;
 uint16_t **partial_rsv;
 CI_quantum_header *current_header;
-void (*process_postings_list)(uint8_t *doclist, uint8_t *end, uint16_t impact);
+void (*process_postings_list)(uint8_t *doclist, uint8_t *end, uint16_t impact, uint32_t integers);
 uint32_t parameter;
 
 if ((postings = (uint8_t *)read_entire_file("CIpostings.bin")) == NULL)
@@ -1079,7 +1073,7 @@ CI_accumulator_clean_flags = new uint8_t[CI_accumulators_height];
 /*
 	Create a buffer to store the decompressed postings lists
 */
-CI_decompressed_postings = new uint32_t[CI_unique_documents];
+CI_decompressed_postings = new uint32_t[CI_unique_documents + 1024];		// we add because some decompressors are allowed to overflow this buffer
 
 /*
 	Now prime the search engine
@@ -1155,6 +1149,8 @@ while (experimental_repeat < times_to_repeat_experiment)
 			postings_list = (CI_vocab_heap *)bsearch(term, CI_dictionary, CI_unique_terms, sizeof(*CI_dictionary), CI_vocab_heap::compare_string);
 			stats_vocab_time += timer_stop(timer);
 
+// print_postings_list(postings_list);
+
 			/*
 				Initialise the QaaT (Quantum at a Time) structures
 			*/
@@ -1197,7 +1193,7 @@ while (experimental_repeat < times_to_repeat_experiment)
 
 			current_header = (CI_quantum_header *)(postings + *current_quantum);
 			timer = timer_start();
-			(*process_postings_list)(postings + current_header->offset, postings + current_header->end, current_header->impact);
+			(*process_postings_list)(postings + current_header->offset, postings + current_header->end, current_header->impact, current_header->quantum_frequency);
 			stats_postings_time += timer_stop(timer);
 
 			/*
