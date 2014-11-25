@@ -13,7 +13,7 @@ main_heap : main_heap.c CIvocab_heap.c CIdoclist.c CI.c
 	g++ $(CI_FLAGS) main_heap.c CIdoclist.c CI.c CIvocab_heap.c -o main_heap
 
 atire_to_heap : atire_to_heap.c
-	g++ $(CI_FLAGS) atire_to_heap.c compress_variable_byte.c -o atire_to_heap
+	g++ $(CI_FLAGS) atire_to_heap.c compress_variable_byte.c compress_simple8b.c maths.c -o atire_to_heap
 
 clean:
 	-rm -rf CIpostings
