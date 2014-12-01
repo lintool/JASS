@@ -2,8 +2,6 @@ CI_FLAGS = -x c++ -DCI_FORCEINLINE -msse4 -O3
 ATIRE_DIR = /Volumes/Other/ATIRE/atire
 ATIRE_DIR = /Users/andrew/programming/ATIRE
 
-
-
 ATIRE_OBJ = \
 	$(ATIRE_DIR)/obj/stats.o			\
 	$(ATIRE_DIR)/obj/ctypes.o					\
@@ -76,9 +74,7 @@ MINUS_D += -DFILENAME_INDEX
 
 CI_FLAGS = -x c++ -DCI_FORCEINLINE -msse4 -O3 -I$(ATIRE_DIR)/source $(MINUS_D)
 
-short_circuit: atire_to_main_heap
-
-all : atire_to_compiled atire_to_heap main_heap main
+all : atire_to_compiled atire_to_main_heap main_heap main
 
 main : main.c CIvocab.c CIdoclist.c CI.c CI.h CIvocab.c
 	g++ $(CI_FLAGS) main.c CIdoclist.c CI.c CIvocab.c -o main

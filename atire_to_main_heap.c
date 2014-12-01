@@ -128,8 +128,6 @@ qsort(termlist, termlist_length, sizeof(*termlist), string_compare);
 uint8_t usage(char *filename)
 {
 printf("Usage: %s <index.aspt> [<topicfile>] [-c|-s|-q|-Q] [-SSE]", filename);
-puts("Generate index.dump with atire_dictionary > index.dump");
-puts("Generatedocid.aspt with atire_doclist");
 puts("Generate <topicfile> with trec2query <trectopicfile>");
 puts("-8 compress the postings using simple 8b");
 puts("-c compress the postings using Variable Byte Encoding (default)");
@@ -229,6 +227,49 @@ FILE *fp, *vocab_dot_c, *postings_dot_bin, *doclist, *doclist_dot_c;
 uint64_t max_docid = 0, max_q = 0;
 
 /*
+	GENERATE_DOCLIST()
+	------------------
+*/
+void generate_doclist(char *index_aspt)
+{
+ANT_memory memory;
+ANT_search_engine search_engine(&memory);
+unsigned long buffer_length;
+long long start, end, doc;
+char *buffer;
+char **filenames;
+long current;
+
+if (!search_engine.open(index_aspt))
+	exit(printf("Can't open index file %s\n", index_aspt));
+
+start = search_engine.get_variable((char *)"~documentfilenamesstart");
+end = search_engine.get_variable((char *)"~documentfilenamesfinish");
+if (start == 0 || end == 0)
+	exit(printf("Document IDs aren't in the index\n"));
+
+buffer_length = (unsigned long)(end - start);
+buffer = (char *)malloc(sizeof(*buffer) * buffer_length);
+
+filenames = search_engine.get_document_filenames(buffer, &buffer_length);
+
+/*
+	do the doclist first as its fastest
+*/
+if ((doclist_dot_c = fopen("CIdoclist.c", "wb")) == NULL)
+	exit(printf("Cannot open CIdoclist.c output file"));
+
+fprintf(doclist_dot_c, "const char *CI_doclist[] =\n{\n");
+
+for (doc = 0; doc < search_engine.document_count(); doc++)
+	fprintf(doclist_dot_c, "\"%s\",\n", filenames[doc]);
+
+fprintf(doclist_dot_c, "};\n");
+delete [] buffer;
+fclose(doclist_dot_c);
+}
+
+/*
 	INITIALISE_MAIN_HEAP_STUFF()
 	----------------------------
 */
@@ -251,6 +292,8 @@ compressor = new ANT_compress_variable_byte;
 /*
 	Check the parametes to see if are anything else
 */
+if (argc < 2)
+	exit(usage(argv[0]));
 for (parameter = 2; parameter < argc; parameter++)
 	if (strcmp(argv[parameter], "-s") == 0)
 		{
@@ -294,25 +337,7 @@ if ((doclist = fopen(argv[1], "rb")) == NULL)
 /*
 	do the doclist first as its fastest
 */
-if ((doclist_dot_c = fopen("CIdoclist.c", "wb")) == NULL)
-	exit(printf("Cannot open CIdoclist.c output file"));
-
-fprintf(doclist_dot_c, "const char *CI_doclist[] =\n{\n");
-
-first_time = true;
-while (fgets(buffer, BUFFER_SIZE, doclist) != NULL)
-	{
-	if (first_time)
-		{
-		fprintf(doclist_dot_c, "\"%s\"", strtok(buffer, "\r\n"));
-		first_time = false;
-		}
-	else
-		fprintf(doclist_dot_c, ",\n\"%s\"", strtok(buffer, "\r\n"));
-	}
-
-fprintf(doclist_dot_c, "\n};\n");
-fclose(doclist_dot_c);
+generate_doclist(argv[1]);
 
 /*
 	Now do the postings lists
@@ -334,10 +359,25 @@ fwrite(&file_mode, 1, 1, postings_dot_bin);
 }
 
 /*
+	TERMINATE_MAIN_HEAP_STUFF()
+	---------------------------
+*/
+void terminate_main_heap_stuff(void)
+{
+fprintf(vocab_dot_c, "};\n\n");
+fprintf(vocab_dot_c, "uint32_t CI_unique_terms = %llu;\n", unique_terms_in_index);
+fprintf(vocab_dot_c, "uint32_t CI_unique_documents = %llu;\n", max_docid + 1);			// +1 because we count from zero
+fprintf(vocab_dot_c, "uint32_t CI_max_q = %llu;\n", max_q);
+
+fclose(vocab_dot_c);
+fclose(postings_dot_bin);
+}
+
+/*
 	CONVERT_TO_MAIN_HEAP()
 	----------------------
 */
-void convert_to_main_heap(void)
+void convert_to_main_heap(char *term)
 {
 uint64_t previous_impact;
 uint32_t docids_in_impact;
@@ -403,7 +443,7 @@ current_quantum++;
 	Tell the vocab where we are
 */
 uint64_t postings_list = ftell(postings_dot_bin);
-fprintf(vocab_dot_c, "{\"%s\",%llu, %u},\n", buffer, postings_list, current_quantum);
+fprintf(vocab_dot_c, "{\"%s\",%llu, %u},\n", term, postings_list, current_quantum);
 
 /*
 	Write a pointer to each quantum header
@@ -526,7 +566,7 @@ ANT_compression_factory factory;
 ANT_memory memory;
 ANT_search_engine search_engine(&memory);
 
-search_engine.open("index.aspt");
+search_engine.open(argv[1]);
 
 ANT_btree_iterator iterator(&search_engine);
 
@@ -552,7 +592,7 @@ for (term = iterator.first(NULL); term != NULL; term = iterator.next())
 		if ((termlist_length != 0) && (bsearch(&term, termlist, termlist_length, sizeof(*termlist), string_compare) == NULL))
 			continue;										// only add to the output file if the term is in the term list (or we have no term list)
 			
-printf("%s %lld %lld\n", term, leaf.local_collection_frequency, leaf.local_document_frequency);
+//printf("%s %lld %lld\n", term, leaf.local_collection_frequency, leaf.local_document_frequency);
 		
 		/*
 			Make sure we have enough room to fit the postings into the intermediary
@@ -583,12 +623,13 @@ printf("%s %lld %lld\n", term, leaf.local_collection_frequency, leaf.local_docum
 		*/
 		process(&factory, the_quantum_count, impact_header_buffer, raw, postings_list + beginning_of_the_postings);
 
-//		for (uint32_t p = 0; p < raw_postings.df; p++)
-//			printf("<%u,%u>", raw_postings.postings_list[p].docid, raw_postings.postings_list[p].tf);
+//for (uint32_t p = 0; p < raw_postings.df; p++)
+//	printf("<%u,%u>", raw_postings.postings_list[p].docid, raw_postings.postings_list[p].tf);
 
-		convert_to_main_heap();
+		convert_to_main_heap(term);
 		}
 	}
+terminate_main_heap_stuff();
 
 return 0;
 }
