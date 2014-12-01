@@ -71,8 +71,7 @@ MINUS_D += -DNOMINMAX
 MINUS_D += -DIMPACT_HEADER
 MINUS_D += -DFILENAME_INDEX
 
-#CI_FLAGS = -x c++ -DCI_FORCEINLINE -msse4 -O3 -I$(ATIRE_DIR)/source $(MINUS_D)
-CI_FLAGS = -x c++ -DCI_FORCEINLINE -msse4 -I$(ATIRE_DIR)/source $(MINUS_D)
+CI_FLAGS = -x c++ -DCI_FORCEINLINE -msse4 -O3 -I$(ATIRE_DIR)/source $(MINUS_D)
 
 all : atire_to_main_heap main_heap
 
