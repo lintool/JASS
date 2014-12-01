@@ -49,6 +49,8 @@ uint32_t termlist_length = 0;
 
 ostringstream *vocab_in_current_file = NULL;
 
+uint8_t file_mode;					// which compressor we're using
+
 /*
 	STRING_COMPARE()
 	----------------
@@ -136,14 +138,38 @@ if (!remember_should_compress)
 else
 	{
 	/*
-		Compute deltas
+		Compute deltas.  We have two algorithms - the first is the "usual" compute consequiteive deltas (so called "D1".
+		The second is "D4", where there are 4 "D1" threads running in parallel.  i.e. (d5, d6, d7, d8) = (x5, x6, x7, x8) -  (x1, x2, x3, x4), etc.
+		see: Daniel Lemire, Leonid Boytsov, Nathan Kurz, SIMD Compression and the Intersection of Sorted Integers, arXiv: 1401.6399, 2014 http://arxiv.org/abs/1401.6399
 	*/
-	was = 0;
-	for (uint32_t *current = remember_buffer; current < remember_into; current++)
+	if (file_mode == 'q')
 		{
-		is = *current;
-		*current -= was;
-		was = is;
+		/*
+			Use D4
+		*/
+		for (uint32_t d_start = 0; d_start < 4; d_start++)
+			{
+			was = 0;
+			for (uint32_t *current = remember_buffer + d_start; current < remember_into; current += 4)
+				{
+				is = *current;
+				*current -= was;
+				was = is;
+				}
+			}
+		}
+	else
+		{
+		/*
+			Use D1
+		*/
+		was = 0;
+		for (uint32_t *current = remember_buffer; current < remember_into; current++)
+			{
+			is = *current;
+			*current -= was;
+			was = is;
+			}
 		}
 
 	/*
@@ -186,7 +212,6 @@ uint64_t postings_file_number = 0;
 uint64_t previous_impact, which_impact, unique_terms_in_index = 0, end;
 uint32_t data_length_in_bytes, data_length_in_bytes_with_padding, quantum, parameter;
 uint8_t *data;
-uint8_t file_mode;
 
 buffer = new char [1024 * 1024 * 1024];
 buffer_address = buffer;
