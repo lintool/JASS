@@ -83,6 +83,10 @@ inline uint64_t timer_start(void)
 	LARGE_INTEGER now;
 	QueryPerformanceCounter(&now);
 	return now.QuadPart;
+#elseif defined(__linux__)
+	struct timeval now;
+	gettimeofday(&now, NULL);
+	return ((uint64_t)now.tv_sec) * 1000 * 1000 + now.tv_usec;
 #else
 	return __rdtsc();
 #endif
@@ -100,6 +104,10 @@ uint64_t timer_stop(uint64_t now)
 	LARGE_INTEGER current;
 	QueryPerformanceCounter(&current);
 	return current.QuadPart - now;
+#elseif defined(__linux__)
+	struct timeval now;
+	gettimeofday(&now, NULL);
+	return (((uint64_t)now.tv_sec) * 1000 * 1000 + now.tv_usec) - now;
 #else
 	return __rdtsc() - now;
 #endif
@@ -156,6 +164,8 @@ uint64_t timer_ticks_to_microseconds(uint64_t count)
 	QueryPerformanceFrequency(&frequency);
 
 	return (count * 1000000.0) / frequency.QuadPart;
+#elseif defined(__linux__)
+	return count;				// already in us!
 #else
 	return count * 1000000.0 / timer_ticks_per_second();
 #endif
