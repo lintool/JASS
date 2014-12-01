@@ -15,6 +15,7 @@
 #include "compress_variable_byte.h"
 #include "compress_simple8b.h"
 #include "compress_qmx.h"
+#include "compress_qmx_d4.h"
 
 #ifdef _MSC_VER
 	#include <direct.h>
@@ -98,6 +99,7 @@ puts("-8 compress the postings using simple 8b");
 puts("-c compress the postings using Variable Byte Encoding (default)");
 puts("-s 'static' do not compress the postings");
 puts("-q compress the postings using QMX");
+puts("-Q compress the postings using QMX-D4");
 
 return 1;
 }
@@ -137,26 +139,11 @@ if (!remember_should_compress)
 	memcpy(remember_compressed, remember_buffer, compressed_size = (sizeof(*remember_buffer) * (remember_into - remember_buffer)));
 else
 	{
-	/*
-		Compute deltas.  We have two algorithms - the first is the "usual" compute consequiteive deltas (so called "D1".
-		The second is "D4", where there are 4 "D1" threads running in parallel.  i.e. (d5, d6, d7, d8) = (x5, x6, x7, x8) -  (x1, x2, x3, x4), etc.
-		see: Daniel Lemire, Leonid Boytsov, Nathan Kurz, SIMD Compression and the Intersection of Sorted Integers, arXiv: 1401.6399, 2014 http://arxiv.org/abs/1401.6399
-	*/
-	if (file_mode == 'q')
+	if (file_mode == 'Q')
 		{
 		/*
-			Use D4
+			We don't need to compute deltas because QMX-D4 does it for us.
 		*/
-		for (uint32_t d_start = 0; d_start < 4; d_start++)
-			{
-			was = 0;
-			for (uint32_t *current = remember_buffer + d_start; current < remember_into; current += 4)
-				{
-				is = *current;
-				*current -= was;
-				was = is;
-				}
-			}
 		}
 	else
 		{
@@ -246,6 +233,13 @@ for (parameter = 3; parameter < argc; parameter++)
 		file_mode = 'q';
 		remember_should_compress = true;
 		compressor = new ANT_compress_qmx;
+		sse_alignment = 16;
+		}
+	else if (strcmp(argv[parameter], "-Q") == 0)
+		{
+		file_mode = 'Q';
+		remember_should_compress = true;
+		compressor = new ANT_compress_qmx_d4;
 		sse_alignment = 16;
 		}
 	else if (strcmp(argv[parameter], "-c") == 0)

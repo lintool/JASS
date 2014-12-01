@@ -26,6 +26,7 @@
 
 #include "CI.h"
 #include "compress_qmx.h"
+#include "compress_qmx_d4.h"
 
 uint16_t *CI_accumulators;				// the accumulators
 uint16_t **CI_accumulator_pointers;	// an array of pointers into the accumulators (used to avoid computing docIDs)
@@ -294,12 +295,11 @@ for (i = (uint32_t *)doclist; i < (uint32_t *)end; i++)
 	add_rsv(*i, impact);
 }
 
-ANT_compress_qmx qmx_decoder;
-
 /*
 	CIT_PROCESS_LIST_COMPRESSED_QMX()
 	---------------------------------
 */
+ANT_compress_qmx qmx_decoder;
 void CIt_process_list_compressed_qmx(uint8_t *source, uint8_t *end, uint16_t impact, uint32_t integers)
 {
 uint32_t sum, *finish, *current;
@@ -314,6 +314,23 @@ while (current < finish)
 	sum += *current++;
 	add_rsv(sum, impact);
 	}
+}
+
+/*
+	CIT_PROCESS_LIST_COMPRESSED_QMX_D4()
+	------------------------------------
+*/
+ANT_compress_qmx_d4 qmx_d4_decoder;
+void CIt_process_list_compressed_qmx_d4(uint8_t *source, uint8_t *end, uint16_t impact, uint32_t integers)
+{
+uint32_t sum, *finish, *current;
+
+qmx_d4_decoder.decodeArray((uint32_t *)source, end - source, CI_decompressed_postings, integers);
+
+current = CI_decompressed_postings;
+finish = current + integers;
+while (current < finish)
+	add_rsv(*current++, impact);
 }
 
 /*
@@ -1049,6 +1066,11 @@ else if (*postings == 'q')
 	{
 	puts("QMX Compressed Index");
 	process_postings_list = CIt_process_list_compressed_qmx;
+	}
+else if (*postings == 'Q')
+	{
+	puts("QMX-D4 Compressed Index");
+	process_postings_list = CIt_process_list_compressed_qmx_d4;
 	}
 else
 	exit(printf("This index appears to be invalid as it is neither compressed nor not compressed!\n"));
