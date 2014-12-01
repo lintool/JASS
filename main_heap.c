@@ -39,6 +39,8 @@ uint32_t CI_accumulators_width;			// the "width" of the accumulator table
 uint32_t CI_accumulators_height;		// the "height" of the accumulator table
 ANT_heap<uint16_t *, add_rsv_compare> *CI_heap;
 
+char **CI_documentlist;					// the list of document IDs (TREC document IDs)
+
 extern CI_vocab_heap CI_dictionary[];					// the vocab array
 
 #define ALIGN_16 __attribute__ ((aligned (16)))
@@ -200,7 +202,7 @@ uint32_t current, id;
 for (current = 0; current < (output_length < CI_results_list_length ? output_length : CI_results_list_length); current++)
 	{
 	id = CI_accumulator_pointers[current] -  CI_accumulators;
-	fprintf(out, "%d Q0 %s %d %d COMPILED (ID:%u)\n", topic_id, CI_doclist[id], current + 1, CI_accumulators[id], id);
+	fprintf(out, "%d Q0 %s %d %d COMPILED (ID:%u)\n", topic_id, CI_documentlist[id], current + 1, CI_accumulators[id], id);
 	}
 }
 
@@ -208,7 +210,7 @@ for (current = 0; current < (output_length < CI_results_list_length ? output_len
 	READ_ENTIRE_FILE()
 	------------------
 */
-char *read_entire_file(const char *filename)
+char *read_entire_file(const char *filename, uint64_t *length = NULL)
 {
 char *block = NULL;
 FILE *fp;
@@ -224,6 +226,9 @@ if (fstat(fileno(fp), &details) == 0)
 	if (details.st_size != 0)
 		if ((block = new char [(size_t)(details.st_size + 1)]) != NULL)		// +1 for the '\0' on the end
 			{
+			if (length != NULL)
+				*length = details.st_size;
+
 			if (fread(block, details.st_size, 1, fp) == 1)
 				block[details.st_size] = '\0';
 			else
@@ -1008,6 +1013,32 @@ for (current = 0; current < postings_list->impacts; current++)
 }
 
 /*
+	READ_DOCLIST()
+	--------------
+*/
+void read_doclist(void)
+{
+char *doclist;
+uint64_t total_docs;
+uint64_t length;
+uint64_t *offset_base;
+
+printf("Load doclist..."); fflush(stdout);
+if ((doclist = read_entire_file("CIdoclist.bin", &length)) == 0)
+	exit(printf("Can't read CIdoclist.bin"));
+
+total_docs = *((uint64_t *)(doclist + length - sizeof(uint64_t)));
+
+CI_documentlist = new char * [total_docs];
+
+offset_base = (uint64_t *)(doclist + length - (total_docs  * sizeof(uint64_t) + sizeof(uint64_t)));
+for (uint64_t id = 0; id < total_docs; id++)
+	CI_documentlist[id] = doclist + offset_base[id];
+
+puts("done"); fflush(stdout);
+}
+
+/*
 	MAIN()
 	------
 */
@@ -1042,8 +1073,10 @@ CI_quantum_header *current_header;
 void (*process_postings_list)(uint8_t *doclist, uint8_t *end, uint16_t impact, uint32_t integers);
 uint32_t parameter;
 
+printf("Load postings..."); fflush(stdout);
 if ((postings = (uint8_t *)read_entire_file("CIpostings.bin")) == NULL)
 	exit(printf("Cannot open postings file 'CIpostings.bin'\n"));
+puts("done"); fflush(stdout);
 
 if (argc < 1 || argc > 4)
 	exit(printf("Usage:%s <queryfile> [<top-k-number>] [-d<ecompress then process>]\n", argv[0]));
@@ -1084,6 +1117,8 @@ else if (*postings == 'Q')
 	}
 else
 	exit(printf("This index appears to be invalid as it is neither compressed nor not compressed!\n"));
+
+read_doclist();
 
 CI_top_k = CI_unique_documents + 1;
 

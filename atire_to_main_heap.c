@@ -223,7 +223,7 @@ return remember_compressed;
 	Globals used by the main_heap code
 */
 uint64_t unique_terms_in_index = 0;
-FILE *fp, *vocab_dot_c, *postings_dot_bin, *doclist, *doclist_dot_c;
+FILE *fp, *vocab_dot_c, *postings_dot_bin;
 uint64_t max_docid = 0, max_q = 0;
 
 /*
@@ -235,10 +235,12 @@ void generate_doclist(char *index_aspt)
 ANT_memory memory;
 ANT_search_engine search_engine(&memory);
 unsigned long buffer_length;
-long long start, end, doc;
+uint64_t start, end, doc;
 char *buffer;
 char **filenames;
 long current;
+FILE *doclist_dot_bin;
+uint64_t *offset;
 
 if (!search_engine.open(index_aspt))
 	exit(printf("Can't open index file %s\n", index_aspt));
@@ -249,24 +251,29 @@ if (start == 0 || end == 0)
 	exit(printf("Document IDs aren't in the index\n"));
 
 buffer_length = (unsigned long)(end - start);
-buffer = (char *)malloc(sizeof(*buffer) * buffer_length);
+buffer = new char [sizeof(*buffer) * buffer_length];
+offset = new uint64_t [sizeof(*buffer) * buffer_length];				// this is way toooo big!
 
 filenames = search_engine.get_document_filenames(buffer, &buffer_length);
 
 /*
 	do the doclist first as its fastest
 */
-if ((doclist_dot_c = fopen("CIdoclist.c", "wb")) == NULL)
-	exit(printf("Cannot open CIdoclist.c output file"));
-
-fprintf(doclist_dot_c, "const char *CI_doclist[] =\n{\n");
+if ((doclist_dot_bin = fopen("CIdoclist.bin", "wb")) == NULL)
+	exit(printf("Cannot open CIdoclist.bin output file"));
 
 for (doc = 0; doc < search_engine.document_count(); doc++)
-	fprintf(doclist_dot_c, "\"%s\",\n", filenames[doc]);
+	{
+	offset[doc] = ftell(doclist_dot_bin);
+	fwrite(filenames[doc], strlen(filenames[doc]) + 1, 1, doclist_dot_bin);			// include the '\0' on the file to make the other end easier
+	}
+fwrite(offset, doc, sizeof(*offset), doclist_dot_bin);
+fwrite(&doc, 1, sizeof(doc), doclist_dot_bin);
 
-fprintf(doclist_dot_c, "};\n");
 delete [] buffer;
-fclose(doclist_dot_c);
+delete [] offset;
+
+fclose(doclist_dot_bin);
 }
 
 /*
@@ -330,9 +337,6 @@ for (parameter = 2; parameter < argc; parameter++)
 		sse_alignment = 16;
 	else
 		load_topic_file(argv[parameter]);
-
-if ((doclist = fopen(argv[1], "rb")) == NULL)
-	exit(printf("Cannot open input file '%s'\n", argv[2]));
 
 /*
 	do the doclist first as its fastest
