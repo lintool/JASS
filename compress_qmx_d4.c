@@ -68,6 +68,7 @@
 ANT_compress_qmx_d4::ANT_compress_qmx_d4()
 {
 length_buffer = NULL;
+deltas_buffer = NULL;
 length_buffer_length = 0;
 }
 
@@ -78,6 +79,7 @@ length_buffer_length = 0;
 ANT_compress_qmx_d4::~ANT_compress_qmx_d4()
 {
 delete [] length_buffer;
+delete [] deltas_buffer;
 #ifdef STATS
 	uint32_t which;
 	for (which = 0; which <= 32; which++)
@@ -508,36 +510,49 @@ return max(max(a, b), max(c, d));
 	ANT_COMPRESS_QMX_D4::ENCODEARRAY()
 	----------------------------------
 */
-void ANT_compress_qmx_d4::encodeArray(const uint32_t *source, uint64_t source_integers, uint32_t *into, uint64_t *nvalue)
+void ANT_compress_qmx_d4::encodeArray(const uint32_t *raw_integers, uint64_t source_integers, uint32_t *into, uint64_t *nvalue)
 {
 const uint32_t WASTAGE = 512;
 uint8_t *current_length, *destination = (uint8_t *)into, *keys;
 uint32_t *current, run_length, bits, new_needed, wastage;
 uint32_t block, largest;
-uint32_t d_start, *current_docid, was, is;
+uint32_t *source;
+uint32_t d_start, *current_docid, *current_delta, was, is;
+
 
 /*
-	make sure we have enough room to store the lengths
+	make sure we have enough room to store the lengths... and new for D4, the deltas
 */
 if (length_buffer_length < source_integers)
 	{
 	delete [] length_buffer;
 	length_buffer = new uint8_t [(size_t)((length_buffer_length = source_integers) + WASTAGE)];
+
+	delete [] deltas_buffer;
+	deltas_buffer = new uint32_t [(size_t)(length_buffer_length + WASTAGE)];
 	}
 
 /*
-	Compute D4 Deltas while computing the lengths of the integers
+	Compute the D4 deltas
 */
-for (d_start = 0; d_start < 4; d_start++)
+for (uint32_t d_start = 0; d_start < 4; d_start++)
 	{
 	was = 0;
-	for (current_docid = (uint32_t *)source + d_start, current_length = length_buffer + d_start; current_docid < source + source_integers; current_docid += 4, current_length += 4)
+	for (current_docid = const_cast<uint32_t *>(raw_integers) + d_start, current_delta = deltas_buffer + d_start; current_docid < raw_integers + source_integers; current_docid += 4, current_delta += 4)
 		{
 		is = *current_docid;
-		*current_length = bits_needed_for(is - was);
+		*current_delta = is - was;
 		was = is;
 		}
 	}
+source = deltas_buffer;
+
+/*
+	Get the lengths of the integers
+*/
+current_length = length_buffer;
+for (current = (uint32_t *)source; current < source + source_integers; current++)
+	*current_length++ = bits_needed_for(*current);
 
 /*
 	Shove a bunch of 0 length integers on the end to allow for overflow
@@ -1407,7 +1422,7 @@ mask_4 = _mm_load_si128((__m128i *)static_mask_4);
 mask_3 = _mm_load_si128((__m128i *)static_mask_3);
 mask_2 = _mm_load_si128((__m128i *)static_mask_2);
 mask_1 = _mm_load_si128((__m128i *)static_mask_1);
-deltas = _mm_castps_si128(_mm_xor_ps(_mm_cvtepu8_epi32(deltas), _mm_cvtepu8_epi32(deltas)));
+deltas = _mm_castps_si128(_mm_xor_ps(_mm_castsi128_ps(deltas), _mm_castsi128_ps(deltas)));
 
 while (to < end)
 	{

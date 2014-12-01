@@ -20,6 +20,7 @@ class ANT_compress_qmx_d4 : public ANT_compress
 private:
 	uint8_t *length_buffer;
 	uint64_t length_buffer_length;
+	uint32_t *deltas_buffer;
 
 public:
 	ANT_compress_qmx_d4();
