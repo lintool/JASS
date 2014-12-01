@@ -1,5 +1,8 @@
 CI_FLAGS = -x c++ -DCI_FORCEINLINE -msse4 -O3
 ATIRE_DIR = /Volumes/Other/ATIRE/atire
+ATIRE_DIR = /Users/andrew/programming/ATIRE
+
+
 
 ATIRE_OBJ = \
 	$(ATIRE_DIR)/obj/stats.o			\
@@ -37,7 +40,6 @@ ATIRE_OBJ = \
 	$(ATIRE_DIR)/obj/compress_simple9_packed.o			\
 	$(ATIRE_DIR)/obj/compress_simple16.o		\
 	$(ATIRE_DIR)/obj/compress_simple16_packed.o		\
-	$(ATIRE_DIR)/obj/compress_variable_byte.o	\
 	$(ATIRE_DIR)/obj/compress_four_integer_variable_byte.o			\
 	$(ATIRE_DIR)/obj/compress_elias_gamma.o		\
 	$(ATIRE_DIR)/obj/compress_golomb.o			\
@@ -74,7 +76,7 @@ MINUS_D += -DFILENAME_INDEX
 
 CI_FLAGS = -x c++ -DCI_FORCEINLINE -msse4 -O3 -I$(ATIRE_DIR)/source $(MINUS_D)
 
-#short_circuit: atire_dictionary
+short_circuit: atire_to_main_heap
 
 all : atire_to_compiled atire_to_heap main_heap main
 
@@ -91,12 +93,12 @@ main_heap : main_heap.c CIvocab_heap.c CIdoclist.c CI.c compress_qmx.c maths.c c
 atire_to_heap : atire_to_heap.c
 	g++ $(CI_FLAGS) atire_to_heap.c compress_variable_byte.c compress_simple8b.c compress_qmx.c compress_qmx_d4.c maths.c -o atire_to_heap
 
-atire_dictionary : atire_dictionary.c
-	g++ $(ATIRE_LIBS) $(ATIRE_OBJ) $(CI_FLAGS) atire_dictionary.c compress_variable_byte.c compress_simple8b.c compress_qmx.c compress_qmx_d4.c maths.c -o atire_dictionary
+atire_to_main_heap : atire_to_main_heap.c
+	g++ $(ATIRE_LIBS) $(ATIRE_OBJ) $(CI_FLAGS) atire_to_main_heap.c compress_variable_byte.c compress_simple8b.c compress_qmx.c compress_qmx_d4.c maths.c -o atire_to_main_heap
 
 clean:
 	-rm -rf CIpostings
-	-rm atire_to_compiled atire_to_heap main_heap main *.o CIvocab.c CIpostings.h CIpostings.c CIdoclist.c CIvocab_heap.c CIpostings.bin
+	-rm atire_to_compiled atire_to_heap main_heap main *.o CIvocab.c CIpostings.h CIpostings.c CIdoclist.c CIvocab_heap.c CIpostings.bin atire_to_main_heap
 
 CIdoclist.c CIvocab_heap.c :
 	@echo "\nNOTE: now run atire_to_heap index.dump doclist.asp [topics]\n"

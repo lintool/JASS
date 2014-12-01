@@ -2,7 +2,6 @@
 	COMPRESS.H
 	----------
 */
-
 #ifndef COMPRESS_H_
 #define COMPRESS_H_
 
