@@ -46,7 +46,7 @@
 #include "compress_qmx_d4.h"
 
 //#define MAKE_DECOMPRESS 1		/* uncomment this and it will create a program that writes the decompressor */
-#define TEST_ONE_STRING 1		/* Uncomment this and it will create a program that can be used to test the compressor and decompressor */
+//#define TEST_ONE_STRING 1		/* Uncomment this and it will create a program that can be used to test the compressor and decompressor */
 #define NO_ZEROS 1					/* stores runs of 256  1s in a row (not 1-bit number, but actual 1 values). */
 #define SHORT_END_BLOCKS 1
 
