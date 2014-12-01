@@ -131,8 +131,9 @@ puts("Generate <topicfile> with trec2query <trectopicfile>");
 puts("-8 compress the postings using simple 8b");
 puts("-c compress the postings using Variable Byte Encoding (default)");
 puts("-s 'static' do not compress the postings");
-puts("-q compress the postings using QMX");
-puts("-Q compress the postings using QMX-D4");
+puts("-q compress the postings using QMX-D1 (QMX + 'regular' d-gaps)");
+puts("-Q compress the postings using QMX-D4 (QMX + 'D4 d-gaps)");
+puts("-R compress the postings using QMX-D0 (QMX  without d-gaps)");
 puts("-SSE SSE algn postings lists (this is the default for QMX based schemes)");
 
 return 1;
@@ -173,10 +174,10 @@ if (!remember_should_compress)
 	memcpy(remember_compressed, remember_buffer, compressed_size = (sizeof(*remember_buffer) * (remember_into - remember_buffer)));
 else
 	{
-	if (file_mode == 'Q')
+	if (file_mode == 'Q' || file_mode == 'R')
 		{
 		/*
-			We don't need to compute deltas because QMX-D4 does it for us.
+			We don't need to compute deltas because the scheme does it for us.
 		*/
 		}
 	else
@@ -324,6 +325,13 @@ for (parameter = 2; parameter < argc; parameter++)
 		file_mode = 'Q';
 		remember_should_compress = true;
 		compressor = new ANT_compress_qmx_d4;
+		sse_alignment = 16;
+		}
+	else if (strcmp(argv[parameter], "-R") == 0)
+		{
+		file_mode = 'R';
+		remember_should_compress = true;
+		compressor = new ANT_compress_qmx;
 		sse_alignment = 16;
 		}
 	else if (strcmp(argv[parameter], "-c") == 0)
