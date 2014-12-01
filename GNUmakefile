@@ -74,7 +74,7 @@ MINUS_D += -DFILENAME_INDEX
 
 CI_FLAGS = -x c++ -DCI_FORCEINLINE -msse4 -O3 -I$(ATIRE_DIR)/source $(MINUS_D)
 
-all : atire_to_compiled atire_to_main_heap main_heap main
+all : atire_to_main_heap main_heap
 
 main : main.c CIvocab.c CIdoclist.c CI.c CI.h CIvocab.c
 	g++ $(CI_FLAGS) main.c CIdoclist.c CI.c CIvocab.c -o main
@@ -97,7 +97,7 @@ clean:
 	-rm atire_to_compiled atire_to_heap main_heap main *.o CIvocab.c CIpostings.h CIpostings.c CIdoclist.c CIvocab_heap.c CIpostings.bin atire_to_main_heap
 
 CIdoclist.c CIvocab_heap.c :
-	@echo "\nNOTE: now run atire_to_heap index.dump doclist.asp [topics]\n"
+	@echo "\nNOTE: now run atire_to_main_heap index.aspt [topics] [-<options>]\n"
 	@false
 
 CIvocab.c :
