@@ -1,5 +1,6 @@
 ATIRE_DIR = /Users/andrew/programming/ATIRE
 ATIRE_DIR = /Volumes/Other/ATIRE/atire
+ATIRE_DIR = /scratch/andrew/atire
 
 ATIRE_OBJ = \
 	$(ATIRE_DIR)/obj/stats.o			\
@@ -89,7 +90,7 @@ atire_to_heap : atire_to_heap.c
 	g++ $(CI_FLAGS) atire_to_heap.c compress_variable_byte.c compress_simple8b.c compress_qmx.c compress_qmx_d4.c maths.c -o atire_to_heap
 
 atire_to_main_heap : atire_to_main_heap.c
-	g++ $(ATIRE_LIBS) $(ATIRE_OBJ) $(CI_FLAGS) atire_to_main_heap.c compress_variable_byte.c compress_simple8b.c compress_qmx.c compress_qmx_d4.c maths.c -o atire_to_main_heap
+	g++ $(ATIRE_OBJ) $(ATIRE_LIBS) $(CI_FLAGS) atire_to_main_heap.c compress_variable_byte.c compress_simple8b.c compress_qmx.c compress_qmx_d4.c maths.c -o atire_to_main_heap
 
 clean:
 	-rm -rf CIpostings

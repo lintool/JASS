@@ -19,6 +19,9 @@
 	#include <sys/times.h>
 	#include <dlfcn.h>
 #endif
+#ifdef __linux__
+	#include <sys/time.h>
+#endif
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <emmintrin.h>
@@ -87,7 +90,7 @@ inline uint64_t timer_start(void)
 	LARGE_INTEGER now;
 	QueryPerformanceCounter(&now);
 	return now.QuadPart;
-#elseif defined(__linux__)
+#elif defined(__linux__)
 	struct timeval now;
 	gettimeofday(&now, NULL);
 	return ((uint64_t)now.tv_sec) * 1000 * 1000 + now.tv_usec;
@@ -108,16 +111,16 @@ uint64_t timer_stop(uint64_t now)
 	LARGE_INTEGER current;
 	QueryPerformanceCounter(&current);
 	return current.QuadPart - now;
-#elseif defined(__linux__)
-	struct timeval now;
-	gettimeofday(&now, NULL);
-	return (((uint64_t)now.tv_sec) * 1000 * 1000 + now.tv_usec) - now;
+#elif defined(__linux__)
+	struct timeval current;
+	gettimeofday(&current, NULL);
+	return (((uint64_t)current.tv_sec) * 1000 * 1000 + current.tv_usec) - now;
 #else
 	return __rdtsc() - now;
 #endif
 }
 
-#if !(defined( __APPLE__) || defined(_MSC_VER))
+#if !(defined( __APPLE__) || defined(_MSC_VER) || defined(__linux__))
 	/*
 		TIMER_TICKS_PER_SECOND()
 		------------------------
@@ -168,7 +171,7 @@ uint64_t timer_ticks_to_microseconds(uint64_t count)
 	QueryPerformanceFrequency(&frequency);
 
 	return (count * 1000000.0) / frequency.QuadPart;
-#elseif defined(__linux__)
+#elif defined (__linux__)
 	return count;				// already in us!
 #else
 	return count * 1000000.0 / timer_ticks_per_second();
