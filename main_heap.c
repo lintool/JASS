@@ -938,7 +938,10 @@ int quantum_compare(const void *a, const void *b)
 CI_quantum_header *lhs = (CI_quantum_header *)((*(uint64_t *)a) + postings);
 CI_quantum_header *rhs = (CI_quantum_header *)((*(uint64_t *)b) + postings);
 
-return lhs->impact < rhs->impact ? 1 : lhs->impact == rhs->impact ? 0 : -1;
+/*
+	sort from highest to lowest impact, but break ties by placing the lowest quantum-frequency first and the highest quantum-drequency last
+*/
+return lhs->impact > rhs->impact ? -1 : lhs->impact < rhs->impact ? 1 : lhs->quantum_frequency > rhs->quantum_frequency ? 1 : lhs->quantum_frequency == rhs->quantum_frequency ? 0 : -1;
 }
 
 /*

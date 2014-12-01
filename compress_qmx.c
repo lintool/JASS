@@ -1266,11 +1266,11 @@ destination += vbyte_bytes_needed_for(val);
 			/*
 				12 * 21-bit ingtegers (in two 128-bit words)
 			*/
-			printf("\t\t\tbyte_stream = _mm_load_si128((__m128i *)in);");
-			printf("\t\t\t_mm_store_si128((__m128i *)to, _mm_and_si128(byte_stream, mask_21));");
-			printf("\t\t\tbyte_stream_2 = _mm_load_si128((__m128i *)in + 1);");
-			printf("\t\t\t_mm_store_si128((__m128i *)to + 1, _mm_and_si128(_mm_or_si128(_mm_slli_epi32(byte_stream_2, 11), _mm_srli_epi32(byte_stream, 21)), mask_21));");
-			printf("\t\t\t_mm_store_si128((__m128i *)to + 2, _mm_and_si128(_mm_srli_epi32(byte_stream_2, 11), mask_21));");
+			printf("\t\t\tbyte_stream = _mm_load_si128((__m128i *)in);\n");
+			printf("\t\t\t_mm_store_si128((__m128i *)to, _mm_and_si128(byte_stream, mask_21));\n");
+			printf("\t\t\tbyte_stream_2 = _mm_load_si128((__m128i *)in + 1);\n");
+			printf("\t\t\t_mm_store_si128((__m128i *)to + 1, _mm_and_si128(_mm_or_si128(_mm_slli_epi32(byte_stream_2, 11), _mm_srli_epi32(byte_stream, 21)), mask_21));\n");
+			printf("\t\t\t_mm_store_si128((__m128i *)to + 2, _mm_and_si128(_mm_srli_epi32(byte_stream_2, 11), mask_21));\n");
 
 			printf("\t\t\tin += 32;\n");			// 32 bytes
 			printf("\t\t\tto += 12;\n");			// becomes 8 integers
