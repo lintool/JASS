@@ -83,8 +83,8 @@ main : main.c CIvocab.c CIdoclist.c CI.c CI.h CIvocab.c
 atire_to_compiled : atire_to_compiled.c
 	g++ $(CI_FLAGS) atire_to_compiled.c compress_variable_byte.c -o atire_to_compiled
 
-main_heap : main_heap.c CIvocab_heap.c CI.c compress_qmx.c maths.c compress_qmx_d4.c
-	g++ $(CI_FLAGS) main_heap.c CI.c CIvocab_heap.c compress_qmx.c compress_qmx_d4.c maths.c -o main_heap
+main_heap : main_heap.c CI.c compress_qmx.c maths.c compress_qmx_d4.c
+	g++ $(CI_FLAGS) main_heap.c CI.c compress_qmx.c compress_qmx_d4.c maths.c -o main_heap
 
 atire_to_heap : atire_to_heap.c
 	g++ $(CI_FLAGS) atire_to_heap.c compress_variable_byte.c compress_simple8b.c compress_qmx.c compress_qmx_d4.c maths.c -o atire_to_heap

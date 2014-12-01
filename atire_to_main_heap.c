@@ -79,7 +79,6 @@ uint32_t quantum_frequency;		// number of integers in the quantum (needed by QMX
 } ;
 
 static CI_heap_quantum postings_offsets[0x100];
-uint32_t current_quantum;
 
 char *termlist[1024 * 10];
 uint32_t termlist_length = 0;
@@ -223,7 +222,7 @@ return remember_compressed;
 	Globals used by the main_heap code
 */
 uint64_t unique_terms_in_index = 0;
-FILE *fp, *vocab_dot_c, *postings_dot_bin;
+FILE *fp, *vocab_dot_c, *postings_dot_bin, *vocab_terms_dot_bin, *vocab_dot_bin;
 uint64_t max_docid = 0, max_q = 0;
 
 /*
@@ -349,6 +348,11 @@ generate_doclist(argv[1]);
 if ((vocab_dot_c = fopen("CIvocab_heap.c", "wb")) == NULL)
 	exit(printf("Cannot open CIvocab_heap.c output file\n"));
 
+if ((vocab_dot_bin = fopen("CIvocab.bin", "wb")) == NULL)
+	exit(printf("Cannot open CIvocab.bin output file\n"));
+if ((vocab_terms_dot_bin = fopen("CIvocab_terms.bin", "wb")) == NULL)
+	exit(printf("Cannot open CIvocab_terms.bin output file\n"));
+
 fprintf(vocab_dot_c, "#include <stdint.h>\n");
 fprintf(vocab_dot_c, "#include \"CI.h\"\n");
 fprintf(vocab_dot_c, "class CI_vocab_heap CI_dictionary[] = {\n");
@@ -375,6 +379,8 @@ fprintf(vocab_dot_c, "uint32_t CI_max_q = %llu;\n", max_q);
 
 fclose(vocab_dot_c);
 fclose(postings_dot_bin);
+fclose(vocab_terms_dot_bin);
+fclose(vocab_dot_bin);
 }
 
 /*
@@ -389,6 +395,7 @@ uint64_t cf, df, docid, impact;
 uint64_t which_impact, end;
 uint32_t data_length_in_bytes, data_length_in_bytes_with_padding, quantum;
 uint8_t *data;
+uint64_t current_quantum;
 
 unique_terms_in_index++;
 current_quantum = 0;
@@ -447,7 +454,11 @@ current_quantum++;
 	Tell the vocab where we are
 */
 uint64_t postings_list = ftell(postings_dot_bin);
-fprintf(vocab_dot_c, "{\"%s\",%llu, %u},\n", term, postings_list, current_quantum);
+uint64_t term_location = ftell(vocab_terms_dot_bin);
+fwrite(term, strlen(term) + 1, 1, vocab_terms_dot_bin);		// include the '\0'
+fwrite(&term_location, sizeof(term_location), 1, vocab_dot_bin);			// 64-bis				// the locaton of the term in the vocab_terms file
+fwrite(&postings_list, sizeof(postings_list), 1, vocab_dot_bin);			// 64-bits
+fwrite(&current_quantum, sizeof(current_quantum), 1, vocab_dot_bin);		// 32-bits
 
 /*
 	Write a pointer to each quantum header

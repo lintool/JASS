@@ -41,7 +41,9 @@ ANT_heap<uint16_t *, add_rsv_compare> *CI_heap;
 
 char **CI_documentlist;					// the list of document IDs (TREC document IDs)
 
-extern CI_vocab_heap CI_dictionary[];					// the vocab array
+CI_vocab_heap *CI_dictionary;					// the vocab array
+uint32_t CI_unique_terms;
+uint32_t CI_unique_documents;
 
 #define ALIGN_16 __attribute__ ((aligned (16)))
 ALIGN_16 uint32_t *CI_decompressed_postings;
@@ -1027,13 +1029,47 @@ printf("Load doclist..."); fflush(stdout);
 if ((doclist = read_entire_file("CIdoclist.bin", &length)) == 0)
 	exit(printf("Can't read CIdoclist.bin"));
 
-total_docs = *((uint64_t *)(doclist + length - sizeof(uint64_t)));
+CI_unique_documents = total_docs = *((uint64_t *)(doclist + length - sizeof(uint64_t)));
 
 CI_documentlist = new char * [total_docs];
 
 offset_base = (uint64_t *)(doclist + length - (total_docs  * sizeof(uint64_t) + sizeof(uint64_t)));
 for (uint64_t id = 0; id < total_docs; id++)
 	CI_documentlist[id] = doclist + offset_base[id];
+
+puts("done"); fflush(stdout);
+}
+
+
+/*
+	READ_VOCAB()
+	------------
+*/
+void read_vocab(void)
+{
+char *vocab, *vocab_terms;
+uint64_t total_terms;
+uint64_t length;
+uint64_t *base;
+uint64_t term;
+
+printf("Load vocab..."); fflush(stdout);
+if ((vocab = read_entire_file("CIvocab.bin", &length)) == NULL)
+	exit(printf("Can't read CIvocab.bin"));
+if ((vocab_terms = read_entire_file("CIvocab_terms.bin")) == NULL)
+	exit(printf("Can't read CIvocab_terms.bin"));
+
+CI_unique_terms = total_terms = length / (sizeof(uint64_t) + sizeof(uint64_t) + sizeof(uint64_t));
+
+CI_dictionary = new CI_vocab_heap[total_terms];
+for (term = 0; term < total_terms; term++)
+	{
+	base = (uint64_t *)(vocab + (3 * sizeof(uint64_t)) * term);
+
+	CI_dictionary[term].term = vocab_terms + base[0];
+	CI_dictionary[term].offset = base[1];
+	CI_dictionary[term].impacts = base[2];
+	}
 
 puts("done"); fflush(stdout);
 }
@@ -1119,6 +1155,7 @@ else
 	exit(printf("This index appears to be invalid as it is neither compressed nor not compressed!\n"));
 
 read_doclist();
+read_vocab();
 
 CI_top_k = CI_unique_documents + 1;
 
