@@ -139,13 +139,14 @@ puts("-SSE SSE algn postings lists (this is the default for QMX based schemes)")
 return 1;
 }
 
-#define MAX_DOCIDS_PER_IMPACT (1024 * 1024 * 5)
+#define MAX_DOCIDS_PER_IMPACT (1024 * 1024 * 50)
 
 uint32_t remember_should_compress = true;
-uint32_t remember_buffer[MAX_DOCIDS_PER_IMPACT];
+uint64_t remember_buffer_size, remember_compressed_buffer_size;
+uint32_t *remember_buffer;
 uint32_t *remember_into = remember_buffer;
 ANT_compress *compressor;
-uint8_t remember_compressed[MAX_DOCIDS_PER_IMPACT * sizeof(uint32_t)];
+uint8_t *remember_compressed;
 uint32_t sse_alignment = 0;
 
 /*
@@ -156,8 +157,8 @@ void remember(uint32_t docid)
 {
 *remember_into++ = docid;
 
-if (remember_into > remember_buffer + MAX_DOCIDS_PER_IMPACT)
-	exit(printf("Exceeded the maximum number of postings allowed per quantum... make the constant large"));
+if (remember_into >= remember_buffer + remember_buffer_size)
+	exit(printf("Too many integers per quantum, change MAX_DOCIDS_PER_IMPACT and re-build\n"));
 }
 
 /*
@@ -171,7 +172,14 @@ uint32_t is, was, compressed_size;
 *integers_in_quantum = remember_into - remember_buffer;
 
 if (!remember_should_compress)
-	memcpy(remember_compressed, remember_buffer, compressed_size = (sizeof(*remember_buffer) * (remember_into - remember_buffer)));
+	{
+	compressed_size = (sizeof(*remember_buffer) * (remember_into - remember_buffer));
+
+	if (compressed_size > remember_compressed_buffer_size)
+		exit(printf("Can't block copy in remember_compress(), change MAX_DOCIDS_PER_IMPACT and re-build\n"));
+
+	memcpy(remember_compressed, remember_buffer, compressed_size);
+	}
 else
 	{
 	if (file_mode == 'Q' || file_mode == 'R')
@@ -197,10 +205,9 @@ else
 	/*
 		Now compress
 	*/
-	compressed_size = compressor->compress(remember_compressed, sizeof(remember_compressed), remember_buffer, remember_into - remember_buffer);
-	
+	compressed_size = compressor->compress(remember_compressed, remember_compressed_buffer_size, remember_buffer, remember_into - remember_buffer);
 	if (compressed_size <= 0)
-		exit(printf("Can't compress\n"));
+		exit(printf("cannot compress, change MAX_DOCIDS_PER_IMPACT and re-build\n"));
 	}
 	
 /*
@@ -588,6 +595,12 @@ ANT_search_engine_btree_leaf leaf;
 ANT_compression_factory factory;
 ANT_memory memory;
 ANT_search_engine search_engine(&memory);
+
+remember_buffer_size = MAX_DOCIDS_PER_IMPACT;
+remember_buffer = new uint32_t [remember_buffer_size];
+remember_into = remember_buffer;
+remember_compressed_buffer_size = remember_buffer_size * sizeof(uint32_t);
+remember_compressed = new uint8_t [remember_compressed_buffer_size];
 
 search_engine.open(argv[1]);
 
