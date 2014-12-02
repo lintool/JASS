@@ -26,8 +26,35 @@
 #include "compress_simple8b.h"
 #include "maths.h"
 
-#define FIND_FIRST_SET 1+ANT_floor_log2
+//#define FIND_FIRST_SET 1+ANT_floor_log2
 #define FIND_LAST_SET ANT_ceiling_log2
+
+/*
+	ffs_table[]
+	-----------
+	If input mod 255 equals this offset, then highest bit set is...
+*/
+static uint32_t ffs_table[] =
+{
+0,1,2,1,3,1,2,1,4,1,2,1,3,1,2,1,5,1,2,1,3,1,2,1,4,1,2,1,3,1,2,1,6,1,2,1,3,1,2,1,4,1,2,1,3,1,2,1,5,1,2,1,3,1,2,1,4,1,2,1,3,1,2,1,7,1,2,1,3,1,2,1,4,1,2,1,3,1,2,1,5,1,2,1,3,1,2,1,4,1,2,1,3,1,2,1,6,1,2,1,3,1,2,1,4,1,2,1,3,1,2,1,5,1,2,1,3,1,2,1,4,1,2,1,3,1,2,1,8,1,2,1,3,1,2,1,4,1,2,1,3,1,2,1,5,1,2,1,3,1,2,1,4,1,2,1,3,1,2,1,6,1,2,1,3,1,2,1,4,1,2,1,3,1,2,1,5,1,2,1,3,1,2,1,4,1,2,1,3,1,2,1,7,1,2,1,3,1,2,1,4,1,2,1,3,1,2,1,5,1,2,1,3,1,2,1,4,1,2,1,3,1,2,1,6,1,2,1,3,1,2,1,4,1,2,1,3,1,2,1,5,1,2,1,3,1,2,1,4,1,2,1,3,1,2,1
+};
+
+/*
+	ffs
+	---
+	Find MSB for input
+*/
+static inline uint32_t ffs(uint32_t x) {
+	uint32_t bits = 0;
+	if (x == 0)
+		return 0;
+	for (;;) {
+		if (x & 0xFF)
+			return bits + ffs_table[x & 0xFF];
+		x >>= 8;
+		bits += 8;
+	}
+}
 
 /*
 	ANT_compress_simple8b::simple8b_shift_table[]
@@ -108,7 +135,7 @@ long ANT_compress_simple8b::row_for_bits_needed[] =
 	ANT_COMPRESS_SIMPLE8B::COMPRESS()
 	--------------------------------
 */
-long long ANT_compress_simple8b::compress(unsigned char *destination, long long destination_length, uint32_t *source, long long source_integers)
+long long ANT_compress_simple8b::compress(unsigned char *destination, long long destination_length, ANT_compressable_integer *source, long long source_integers)
 {
 long long words_in_compressed_string, pos;
 uint32_t mask_type, num_to_pack;
@@ -131,7 +158,7 @@ for (words_in_compressed_string = 0; pos < source_integers; words_in_compressed_
 		last_bitmask |= (bitmask & invalid_masks_for_offset[offset + 1]);
 		}
 	/* 'ffs' function returns 0 => no bits were set => no valid masks => invalid input */
-	if ((mask_type = FIND_FIRST_SET(last_bitmask)) == 0)
+	if ((mask_type = ffs(last_bitmask)) == 0)
 		return 0;
 	/* turn bit position into actual mask to use */
 	mask_type--;
@@ -158,12 +185,12 @@ return words_in_compressed_string * sizeof(*into); //stores the length of n[]
 	ANT_COMPRESS_SIMPLE8B::DECOMPRESS()
 	----------------------------------
 */
-void ANT_compress_simple8b::decompress(uint32_t *destination, unsigned char *source, long long destination_integers)
+void ANT_compress_simple8b::decompress(ANT_compressable_integer *destination, unsigned char *source, long long destination_integers)
 {
 uint64_t *compressed_sequence = (uint64_t *)source;
 uint32_t mask_type;
 uint64_t value;
-uint32_t *end = destination + destination_integers;
+ANT_compressable_integer *end = destination + destination_integers;
 
 while (destination < end)
 	{
