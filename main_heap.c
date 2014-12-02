@@ -30,6 +30,7 @@
 #include "CI.h"
 #include "compress_qmx.h"
 #include "compress_qmx_d4.h"
+#include "compress_simple8b.h"
 
 uint16_t *CI_accumulators;				// the accumulators
 uint16_t **CI_accumulator_pointers;	// an array of pointers into the accumulators (used to avoid computing docIDs)
@@ -367,6 +368,27 @@ current = CI_decompressed_postings;
 finish = current + integers;
 while (current < finish)
 	add_rsv(*current++, impact);
+}
+
+/*
+	CIT_PROCESS_LIST_COMPRESSED_SIMPLE8B_ATIRE()
+	--------------------------------------------
+*/
+ANT_compress_simple8b simple8b_decoder;
+void CIt_process_list_compressed_simple8b_ATIRE(uint8_t *source, uint8_t *end, uint16_t impact, uint32_t integers)
+{
+uint32_t sum, *finish, *current;
+
+simple8b_decoder.decompress(CI_decompressed_postings, source, integers);
+
+sum = 0;
+current = CI_decompressed_postings;
+finish = current + integers;
+while (current < finish)
+	{
+	sum += *current++;
+	add_rsv(sum, impact);
+	}
 }
 
 /*
@@ -1158,7 +1180,8 @@ else if (*postings == 'c')
 else if (*postings == '8')
 	{
 	puts("Simple-8b Compressed Index");
-	process_postings_list = CIt_process_list_compressed_simple8b;
+	process_postings_list = CIt_process_list_compressed_simple8b_ATIRE;
+//	process_postings_list = CIt_process_list_compressed_simple8b;
 	}
 else if (*postings == 'q')
 	{
