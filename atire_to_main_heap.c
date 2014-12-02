@@ -143,7 +143,7 @@ return 1;
 
 uint32_t remember_should_compress = true;
 uint64_t remember_buffer_size, remember_compressed_buffer_size;
-uint32_t *remember_buffer;
+uint32_t *remember_buffer, *decompress_buffer;
 uint32_t *remember_into = remember_buffer;
 ANT_compress *compressor;
 uint8_t *remember_compressed;
@@ -165,6 +165,9 @@ if (remember_into >= remember_buffer + remember_buffer_size)
 	REMEMBER_COMPRESS()
 	-------------------
 */
+ANT_compress_qmx QMX;
+ANT_compress_qmx_d4 QMX_D4;
+
 uint8_t *remember_compress(uint32_t *length, uint32_t *padded_length, uint32_t *integers_in_quantum)
 {
 uint32_t is, was, compressed_size;
@@ -206,6 +209,24 @@ else
 		Now compress
 	*/
 	compressed_size = compressor->compress(remember_compressed, remember_compressed_buffer_size, remember_buffer, remember_into - remember_buffer);
+
+#ifdef NEVER
+							/*
+								Check that the compressed sequence an decompress to the original
+							*/
+							if (file_mode == 'R' || file_mode == 'q')
+								QMX.decodeArray((uint32_t *)remember_compressed, compressed_size, decompress_buffer, remember_into - remember_buffer);
+							else if (file_mode == 'Q')
+								QMX_D4.decodeArray((uint32_t *)remember_compressed, compressed_size, decompress_buffer, remember_into - remember_buffer);
+							else
+								compressor->decompress(decompress_buffer, remember_compressed, remember_into - remember_buffer);
+							for (uint32_t ch = 0; ch < remember_into - remember_buffer; ch++)
+								if (decompress_buffer[ch] != remember_buffer[ch])
+									exit(printf("Decompressed doesn't match compressed at position %u\n", ch));
+							/*
+							*/
+#endif
+
 	if (compressed_size <= 0)
 		exit(printf("cannot compress, change MAX_DOCIDS_PER_IMPACT and re-build\n"));
 	}
@@ -598,6 +619,7 @@ ANT_search_engine search_engine(&memory);
 
 remember_buffer_size = MAX_DOCIDS_PER_IMPACT;
 remember_buffer = new uint32_t [remember_buffer_size];
+decompress_buffer = new uint32_t [remember_buffer_size];
 remember_into = remember_buffer;
 remember_compressed_buffer_size = remember_buffer_size * sizeof(uint32_t);
 remember_compressed = new uint8_t [remember_compressed_buffer_size];
