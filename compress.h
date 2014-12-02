@@ -6,7 +6,7 @@
 #define COMPRESS_H_
 
 #include <stdint.h>
-
+#define ANT_compressable_integer uint32_t
 /*
 	class ANT_COMPRESS
 	------------------
