@@ -1180,8 +1180,8 @@ else if (*postings == 'c')
 else if (*postings == '8')
 	{
 	puts("Simple-8b Compressed Index");
-	process_postings_list = CIt_process_list_compressed_simple8b_ATIRE;
-//	process_postings_list = CIt_process_list_compressed_simple8b;
+//	process_postings_list = CIt_process_list_compressed_simple8b_ATIRE;
+	process_postings_list = CIt_process_list_compressed_simple8b;
 	}
 else if (*postings == 'q')
 	{
