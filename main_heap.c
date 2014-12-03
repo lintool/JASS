@@ -1148,7 +1148,7 @@ uint64_t early_terminate;
 uint16_t **partial_rsv;
 CI_quantum_header *current_header;
 void (*process_postings_list)(uint8_t *doclist, uint8_t *end, uint16_t impact, uint32_t integers);
-uint32_t parameter;
+uint32_t parameter, decompress_then_process;
 
 printf("Load postings..."); fflush(stdout);
 if ((postings = (uint8_t *)read_entire_file("CIpostings.bin")) == NULL)
@@ -1164,6 +1164,22 @@ if ((fp = fopen(argv[1], "r")) == NULL)
 if ((out = fopen("ranking.txt", "w")) == NULL )
   exit(printf("Can't open output file.\n"));
 
+
+/*
+	Parameter parsing
+*/
+CI_top_k = CI_unique_documents + 1;
+decompress_then_process = false;
+
+for (parameter = 2; parameter < argc; parameter++)
+	if (strcmp(argv[parameter], "-d") == 0)
+		{
+		puts("Decompress then Process (non-interleaved) mode");
+		decompress_then_process = true;
+		}
+	else
+		CI_top_k = atoll(argv[parameter]);
+
 /*
 	Sort out how to decode the postings (either compressed or not)
 */
@@ -1175,27 +1191,38 @@ if (*postings == 's')
 else if (*postings == 'c')
 	{
 	puts("Variable Byte Compressed Index");
-	process_postings_list = CIt_process_list_compressed_vbyte;
+	if (decompress_then_process)
+		process_postings_list = CIt_process_list_decompress_then_process;
+	else
+		process_postings_list = CIt_process_list_compressed_vbyte;
 	}
 else if (*postings == '8')
 	{
 	puts("Simple-8b Compressed Index");
-//	process_postings_list = CIt_process_list_compressed_simple8b_ATIRE;
-	process_postings_list = CIt_process_list_compressed_simple8b;
+	if (decompress_then_process)
+		process_postings_list = CIt_process_list_compressed_simple8b_ATIRE;
+	else
+		process_postings_list = CIt_process_list_compressed_simple8b;
 	}
 else if (*postings == 'q')
 	{
 	puts("QMX Compressed Index");
+	if (!decompress_then_process)
+		exit(printf("Cannot interleave QMX\n"));
 	process_postings_list = CIt_process_list_compressed_qmx;
 	}
 else if (*postings == 'Q')
 	{
 	puts("QMX-D4 Compressed Index");
+	if (!decompress_then_process)
+		exit(printf("Cannot interleave QMX\n"));
 	process_postings_list = CIt_process_list_compressed_qmx_d4;
 	}
 else if (*postings == 'R')
 	{
 	puts("QMX-D0 Compressed Index");
+	if (!decompress_then_process)
+		exit(printf("Cannot interleave QMX\n"));
 	process_postings_list = CIt_process_list_compressed_qmx_d0;
 	}
 else
@@ -1203,17 +1230,6 @@ else
 
 read_doclist();
 read_vocab();
-
-CI_top_k = CI_unique_documents + 1;
-
-for (parameter = 2; parameter < argc; parameter++)
-	if (strcmp(argv[parameter], "-d") == 0)
-		if (*postings == 'c')
-			process_postings_list = CIt_process_list_decompress_then_process;
-		else
-			exit(printf("Cannot decompress then process as the postings are not compressed"));
-	else
-		CI_top_k = atoll(argv[parameter]);
 
 /*
 	Compute the details of the accumulator table
