@@ -1,6 +1,6 @@
 ATIRE_DIR = /Users/andrew/programming/ATIRE
 ATIRE_DIR = /scratch/andrew/atire
-ATIRE_DIR = /Volumes/Other/ATIRE/atire
+#ATIRE_DIR = /Volumes/Other/ATIRE/atire
 
 ATIRE_OBJ = \
 	$(ATIRE_DIR)/obj/stats.o			\

@@ -14,6 +14,7 @@
 #include <math.h>
 #include <limits.h>
 #include <limits>
+#include "fundamental_types.h"
 
 /*
 	ANT_ROUND()
@@ -26,6 +27,18 @@ template <class Type> inline Type ANT_round(Type x) { return floor(x + 0.5); }
 	----------
 */
 template <class Type> int ANT_sign(Type a) { return a < 0 ? -1 : a > 0 ? 1 : 0; }
+
+/*
+	ANT_FFS_NONZERO32()
+	-------------------
+	Compute position of lowest set bit. 1 == LSB.
+	It is an error to call this with the zero input.
+*/
+static inline unsigned long ANT_ffs_nonzero32(unsigned long x)
+{
+extern unsigned long ANT_ffs_nonzero_table32[];
+return ANT_ffs_nonzero_table32[(uint32_t)((x & (-(long)x)) * 0x077CB531U) >> 27];
+}
 
 /*
 	ANT_FLOOR_LOG2()
