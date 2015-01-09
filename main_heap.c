@@ -2,6 +2,9 @@
 	MAIN_HEAP.C
 	-----------
 */
+
+// #define TIME_EVERYTHING 1
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -1134,6 +1137,7 @@ uint64_t stats_accumulator_time;
 uint64_t stats_vocab_time;
 uint64_t stats_postings_time;
 uint64_t stats_sort_time;
+uint64_t stats_tmp;
 uint64_t total_number_of_topics;
 uint64_t stats_total_time_to_search;
 uint64_t stats_total_time_to_search_without_io;
@@ -1266,6 +1270,9 @@ quantum_check_pointers = new uint16_t * [accumulators_needed];
 /*
 	Now start searching
 */
+#ifdef TIME_EVERYTHING
+	times_to_repeat_experiment = 1;
+#endif
 while (experimental_repeat < times_to_repeat_experiment)
 	{
 	experimental_repeat++;
@@ -1364,12 +1371,18 @@ while (experimental_repeat < times_to_repeat_experiment)
 			current_header = (CI_quantum_header *)(postings + *current_quantum);
 			timer = timer_start();
 			(*process_postings_list)(postings + current_header->offset, postings + current_header->end, current_header->impact, current_header->quantum_frequency);
-			stats_postings_time += timer_stop(timer);
+			stats_tmp = timer_stop(timer);
+			stats_postings_time += stats_tmp;
+
+#ifdef TIME_EVERYTHING
+	printf("I:%lld L:%lld T:%lld\n", (long long)current_header->impact, (long long)current_header->quantum_frequency, stats_tmp);
+#endif
 
 			/*
 				Check to see if its posible for the remaining impacts to affect the order of the top-k
 			*/
 			timer = timer_start();
+
 			/*
 				Subtract the current impact score and then add the next impact score for the current term
 			*/
