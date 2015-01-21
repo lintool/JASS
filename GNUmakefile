@@ -1,6 +1,6 @@
 ATIRE_DIR = /Users/andrew/programming/ATIRE
 #ATIRE_DIR = /scratch/andrew/atire
-ATIRE_DIR = /Volumes/Other/ATIRE/atire
+ATIRE_DIR = /fs/clip-hadoop/jimmylin/atire
 
 ATIRE_OBJ = \
 	$(ATIRE_DIR)/obj/stats.o			\
@@ -74,7 +74,7 @@ MINUS_D += -DFILENAME_INDEX
 
 CI_FLAGS = -x c++ -DCI_FORCEINLINE -msse4 -O3 -I$(ATIRE_DIR)/source $(MINUS_D)
 
-all : atire_to_main_heap main_heap
+all : atire_to_main_heap main_heap main_anytime
 
 main : main.c CIvocab.c CIdoclist.c CI.c CI.h CIvocab.c
 	g++ $(CI_FLAGS) main.c CIdoclist.c CI.c CIvocab.c -o main
@@ -82,6 +82,9 @@ main : main.c CIvocab.c CIdoclist.c CI.c CI.h CIvocab.c
 
 atire_to_compiled : atire_to_compiled.c
 	g++ $(CI_FLAGS) atire_to_compiled.c compress_variable_byte.c -o atire_to_compiled
+
+main_anytime : main_anytime.c CI.c compress_qmx.c maths.c compress_qmx_d4.c
+	g++ $(CI_FLAGS) main_anytime.c CI.c compress_simple8b.c compress_qmx.c compress_qmx_d4.c maths.c -o main_anytime
 
 main_heap : main_heap.c CI.c compress_qmx.c maths.c compress_qmx_d4.c
 	g++ $(CI_FLAGS) main_heap.c CI.c compress_simple8b.c compress_qmx.c compress_qmx_d4.c maths.c -o main_heap
