@@ -1373,9 +1373,10 @@ while (experimental_repeat < times_to_repeat_experiment)
 		postings_processed = 0;
 		for (current_quantum = quantum_order; *current_quantum != 0; current_quantum++)
 			{
-			stats_quantum_count++;
-
 			current_header = (CI_quantum_header *)(postings + *current_quantum);
+			if (postings_processed + current_header->quantum_frequency > postings_to_process) break;
+
+			stats_quantum_count++;
 			timer = timer_start();
 			(*process_postings_list)(postings + current_header->offset, postings + current_header->end, current_header->impact, current_header->quantum_frequency);
 			stats_tmp = timer_stop(timer);
@@ -1386,8 +1387,6 @@ while (experimental_repeat < times_to_repeat_experiment)
 			printf("I:%lld L:%lld T:%lld\n", (long long)current_header->impact, (long long)current_header->quantum_frequency, stats_tmp);
 #endif
 
-			//printf("%d postings processed\n", postings_processed);
-			if (postings_processed > postings_to_process) break;
 			}
 
 		/*
@@ -1405,7 +1404,7 @@ while (experimental_repeat < times_to_repeat_experiment)
 		int t = timer_stop(full_query_without_io_timer);
 		stats_total_time_to_search_without_io += t;
 
-		printf("postings processed,us:%d,%d\n", postings_processed, t); 
+		printf("query id,postings processed,us:%d,%d,%d\n", query_id, postings_processed, t); 
 
 		/*
 			Creat a TREC run file as output
