@@ -1009,7 +1009,7 @@ puts("done"); fflush(stdout);
 */
 int main(int argc, char *argv[])
 {
-chrono::time_point<chrono::steady_clock> full_query_timer = chrono::steady_clock::now();
+chrono::time_point<chrono::steady_clock, chrono::nanoseconds> full_query_timer = chrono::steady_clock::now();
 
 static char buffer[1024];
 const char *SEPERATORS = " \t\r\n";
@@ -1017,7 +1017,7 @@ FILE *fp, *out;
 char *term, *id;
 uint64_t query_id;
 CI_vocab_heap *postings_list;
-chrono::time_point<chrono::steady_clock> timer, full_query_without_io_timer;
+chrono::time_point<chrono::steady_clock, chrono::nanoseconds> start_timer, end_timer, full_query_without_io_timer;
 chrono::nanoseconds stats_accumulator_time;
 chrono::nanoseconds stats_vocab_time;
 chrono::nanoseconds stats_postings_time;
@@ -1195,9 +1195,10 @@ while (experimental_repeat < times_to_repeat_experiment)
 		/*
 			Initialise the accumulators
 		*/
-		timer = chrono::steady_clock::now();
+		start_timer = chrono::steady_clock::now();
 		memset(CI_accumulator_clean_flags, 0, CI_accumulators_height);
-		stats_accumulator_time += chrono::steady_clock::now() - timer;
+		end_timer = chrono::steady_clock::now();
+		stats_accumulator_time += chrono::duration_cast<chrono::nanoseconds>(end_timer - start_timer);
 
 		/*
 			For each term, drag out the pointer list and add it to the list of quantums to process
@@ -1208,16 +1209,17 @@ while (experimental_repeat < times_to_repeat_experiment)
 
 		while ((term = strtok(NULL, SEPERATORS)) != NULL)
 			{
-			timer = chrono::steady_clock::now();
+			start_timer = chrono::steady_clock::now();
 			postings_list = (CI_vocab_heap *)bsearch(term, CI_dictionary, CI_unique_terms, sizeof(*CI_dictionary), CI_vocab_heap::compare_string);
-			stats_vocab_time += chrono::steady_clock::now() - timer;
+			end_timer = chrono::steady_clock::now();
+			stats_vocab_time += chrono::duration_cast<chrono::nanoseconds>(end_timer - start_timer);
 
 // print_postings_list(postings_list);
 
 			/*
 				Initialise the QaaT (Quantum at a Time) structures
 			*/
-			timer = chrono::steady_clock::now();
+			start_timer = chrono::steady_clock::now();
 			if (postings_list != NULL)
 				{
 				/*
@@ -1246,7 +1248,8 @@ while (experimental_repeat < times_to_repeat_experiment)
 		*/
 		qsort(quantum_order, current_quantum - quantum_order, sizeof(*quantum_order), quantum_compare);
 
-		stats_quantum_prep_time += chrono::steady_clock::now() - timer;
+		end_timer = chrono::steady_clock::now();
+		stats_quantum_prep_time += chrono::duration_cast<chrono::nanoseconds>(end_timer - start_timer);
 		/*
 			Now process each quantum, one at a time
 		*/
@@ -1255,9 +1258,10 @@ while (experimental_repeat < times_to_repeat_experiment)
 			stats_quantum_count++;
 
 			current_header = (CI_quantum_header *)(postings + *current_quantum);
-			timer = chrono::steady_clock::now();
+			start_timer = chrono::steady_clock::now();
 			(*process_postings_list)(postings + current_header->offset, postings + current_header->end, current_header->impact, current_header->quantum_frequency);
-			stats_tmp = chrono::steady_clock::now() - timer;
+			end_timer = chrono::steady_clock::now();
+			stats_tmp = chrono::duration_cast<chrono::nanoseconds>(end_timer - start_timer);
 			stats_postings_time += stats_tmp;
 
 #ifdef TIME_EVERYTHING
@@ -1267,7 +1271,7 @@ while (experimental_repeat < times_to_repeat_experiment)
 			/*
 				Check to see if its posible for the remaining impacts to affect the order of the top-k
 			*/
-			timer = chrono::steady_clock::now();
+			start_timer = chrono::steady_clock::now();
 
 			/*
 				Subtract the current impact score and then add the next impact score for the current term
@@ -1296,7 +1300,8 @@ while (experimental_repeat < times_to_repeat_experiment)
 						break;
 						}
 				}
-			stats_early_terminate_check_time += chrono::steady_clock::now() - timer;
+			end_timer = chrono::steady_clock::now();
+			stats_early_terminate_check_time += chrono::duration_cast<chrono::nanoseconds>(end_timer - start_timer);
 			if (early_terminate)
 				{
 				stats_early_terminations++;
@@ -1307,16 +1312,18 @@ while (experimental_repeat < times_to_repeat_experiment)
 		/*
 			sort the accumulator pointers to put the highest RSV document at the top of the list
 		*/
-		timer = chrono::steady_clock::now();
+		start_timer = chrono::steady_clock::now();
 		top_k_qsort(CI_accumulator_pointers, CI_results_list_length, CI_top_k - 1);
-		stats_sort_time += chrono::steady_clock::now() - timer;
+		end_timer = chrono::steady_clock::now();
+		stats_sort_time += chrono::duration_cast<chrono::nanoseconds>(end_timer - start_timer);
 
 		/*
 			At this point we know the number of hits (CI_results_list_length) and they can be decode out of the CI_accumulator_pointers array
 			where CI_accumulator_pointers[0] points into CI_accumulators[] and therefore CI_accumulator_pointers[0] - CI_accumulators is the docid
 			and *CI_accumulator_pointers[0] is the rsv.
 		*/
-		stats_total_time_to_search_without_io += chrono::steady_clock::now() - full_query_without_io_timer;
+		end_timer = chrono::steady_clock::now();
+		stats_total_time_to_search_without_io += chrono::duration_cast<chrono::nanoseconds>(end_timer - full_query_without_io_timer);
 
 		/*
 			Creat a TREC run file as output
@@ -1328,7 +1335,8 @@ while (experimental_repeat < times_to_repeat_experiment)
 fclose(out);
 fclose(fp);
 
-stats_total_time_to_search += chrono::steady_clock::now() - full_query_timer;
+end_timer = chrono::steady_clock::now();
+stats_total_time_to_search += chrono::duration_cast<chrono::nanoseconds>(end_timer - full_query_timer);
 print_os_time();
 
 printf("Averages over %llu queries\n", total_number_of_topics);
