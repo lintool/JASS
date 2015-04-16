@@ -1,6 +1,6 @@
 ATIRE_DIR = /Users/andrew/programming/ATIRE
 #ATIRE_DIR = /scratch/andrew/atire
-ATIRE_DIR = /fs/clip-hadoop/jimmylin/atire
+ATIRE_DIR := /fs/clip-hadoop/jimmylin/atire
 
 ATIRE_OBJ = \
 	$(ATIRE_DIR)/obj/stats.o			\
