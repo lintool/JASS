@@ -593,9 +593,23 @@ while (current_length < length_buffer + source_integers)
 		Otherwise we have the standard rules for a block
 	*/
 #endif
+	/*
+		Two things need to happen to be able to use a particular selector. The first is that all the 
+		values that would end up in that block need to use at most the bit value of that block.
+		The second is that there need to be at least as many numbers remaining as the block encodes.
+		
+		For example, if the current block only needs 0-bits per int, then check that the 256 values
+		that would be encoded only take 0-bits. If any value needs more, or there aren't 256 numbers remaining,
+		then promote the current block to try encode 128 1-bit values.
+	*/
 	switch (*current_length)
 		{
 		case 0:
+			if (source_integers - (current_length - length_buffer) < 256)
+				{
+				*current_length = *(current_length + 1) = *(current_length + 2) = *(current_length + 3) = 1;				// promote
+				break;
+				}
 			for (block = 0; block < 256; block += 4)
 				if (*(current_length + block) > 0)
 					*current_length = *(current_length + 1) = *(current_length + 2) = *(current_length + 3) = 1;				// promote
@@ -607,6 +621,11 @@ while (current_length < length_buffer + source_integers)
 				}
 			break;
 		case 1:
+			if (source_integers - (current_length - length_buffer) < 128)
+				{
+				*current_length = *(current_length + 1) = *(current_length + 2) = *(current_length + 3) = 2;				// promote
+				break;
+				}
 			for (block = 0; block < 128; block += 4)
 				if (*(current_length + block) > 1)
 					*current_length = *(current_length + 1) = *(current_length + 2) = *(current_length + 3) = 2;				// promote
@@ -618,6 +637,11 @@ while (current_length < length_buffer + source_integers)
 				}
 			break;
 		case 2:
+			if (source_integers - (current_length - length_buffer) < 64)
+				{
+				*current_length = *(current_length + 1) = *(current_length + 2) = *(current_length + 3) = 3;				// promote
+				break;
+				}
 			for (block = 0; block < 64; block += 4)
 				if (*(current_length + block) > 2)
 					*current_length = *(current_length + 1) = *(current_length + 2) = *(current_length + 3) = 3;				// promote
@@ -629,6 +653,11 @@ while (current_length < length_buffer + source_integers)
 				}
 			break;
 		case 3:
+			if (source_integers - (current_length - length_buffer) < 40)
+				{
+				*current_length = *(current_length + 1) = *(current_length + 2) = *(current_length + 3) = 4;				// promote
+				break;
+				}
 			for (block = 0; block < 40; block += 4)
 				if (*(current_length + block) > 3)
 					*current_length = *(current_length + 1) = *(current_length + 2) = *(current_length + 3) = 4;				// promote
@@ -640,6 +669,11 @@ while (current_length < length_buffer + source_integers)
 				}
 			break;
 		case 4:
+			if (source_integers - (current_length - length_buffer) < 32)
+				{
+				*current_length = *(current_length + 1) = *(current_length + 2) = *(current_length + 3) = 5;				// promote
+				break;
+				}
 			for (block = 0; block < 32; block += 4)
 				if (*(current_length + block) > 4)
 					*current_length = *(current_length + 1) = *(current_length + 2) = *(current_length + 3) = 5;				// promote
@@ -651,6 +685,11 @@ while (current_length < length_buffer + source_integers)
 				}
 			break;
 		case 5:
+			if (source_integers - (current_length - length_buffer) < 24)
+				{
+				*current_length = *(current_length + 1) = *(current_length + 2) = *(current_length + 3) = 6;				// promote
+				break;
+				}
 			for (block = 0; block < 24; block += 4)
 				if (*(current_length + block) > 5)
 					*current_length = *(current_length + 1) = *(current_length + 2) = *(current_length + 3) = 6;				// promote
@@ -662,6 +701,11 @@ while (current_length < length_buffer + source_integers)
 				}
 			break;
 		case 6:
+			if (source_integers - (current_length - length_buffer) < 20)
+				{
+				*current_length = *(current_length + 1) = *(current_length + 2) = *(current_length + 3) = 7;				// promote
+				break;
+				}
 			for (block = 0; block < 20; block += 4)
 				if (*(current_length + block) > 6)
 					*current_length = *(current_length + 1) = *(current_length + 2) = *(current_length + 3) = 7;				// promote
@@ -673,6 +717,11 @@ while (current_length < length_buffer + source_integers)
 				}
 			break;
 		case 7:
+			if (source_integers - (current_length - length_buffer) < 36)
+				{
+				*current_length = *(current_length + 1) = *(current_length + 2) = *(current_length + 3) = 8;				// promote
+				break;
+				}
 			for (block = 0; block < 36; block += 4)		// 36 in a double 128-bit word
 				if (*(current_length + block) > 7)
 					*current_length = *(current_length + 1) = *(current_length + 2) = *(current_length + 3) = 8;				// promote
@@ -684,6 +733,11 @@ while (current_length < length_buffer + source_integers)
 				}
 			break;
 		case 8:
+			if (source_integers - (current_length - length_buffer) < 16)
+				{
+				*current_length = *(current_length + 1) = *(current_length + 2) = *(current_length + 3) = 9;				// promote
+				break;
+				}
 			for (block = 0; block < 16; block += 4)
 				if (*(current_length + block) > 8)
 					*current_length = *(current_length + 1) = *(current_length + 2) = *(current_length + 3) = 9;				// promote
@@ -695,6 +749,11 @@ while (current_length < length_buffer + source_integers)
 				}
 			break;
 		case 9:
+			if (source_integers - (current_length - length_buffer) < 28)
+				{
+				*current_length = *(current_length + 1) = *(current_length + 2) = *(current_length + 3) = 10;				// promote
+				break;
+				}
 			for (block = 0; block < 28; block += 4)		// 28 in a double 128-bit word
 				if (*(current_length + block) > 9)
 					*current_length = *(current_length + 1) = *(current_length + 2) = *(current_length + 3) = 10;				// promote
@@ -706,6 +765,11 @@ while (current_length < length_buffer + source_integers)
 				}
 			break;
 		case 10:
+			if (source_integers - (current_length - length_buffer) < 12)
+				{
+				*current_length = *(current_length + 1) = *(current_length + 2) = *(current_length + 3) = 12;				// promote
+				break;
+				}
 			for (block = 0; block < 12; block += 4)
 				if (*(current_length + block) > 10)
 					*current_length = *(current_length + 1) = *(current_length + 2) = *(current_length + 3) = 12;				// promote
@@ -717,6 +781,11 @@ while (current_length < length_buffer + source_integers)
 				}
 			break;
 		case 12:
+			if (source_integers - (current_length - length_buffer) < 20)
+				{
+				*current_length = *(current_length + 1) = *(current_length + 2) = *(current_length + 3) = 16;				// promote
+				break;
+				}
 			for (block = 0; block < 20; block += 4)		// 20 in a double 128-bit word
 				if (*(current_length + block) > 12)
 					*current_length = *(current_length + 1) = *(current_length + 2) = *(current_length + 3) = 16;				// promote
@@ -728,6 +797,11 @@ while (current_length < length_buffer + source_integers)
 				}
 			break;
 		case 16:
+			if (source_integers - (current_length - length_buffer) < 8)
+				{
+				*current_length = *(current_length + 1) = *(current_length + 2) = *(current_length + 3) = 21;				// promote
+				break;
+				}
 			for (block = 0; block < 8; block += 4)
 				if (*(current_length + block) > 16)
 					*current_length = *(current_length + 1) = *(current_length + 2) = *(current_length + 3) = 21;				// promote
@@ -739,6 +813,11 @@ while (current_length < length_buffer + source_integers)
 				}
 			break;
 		case 21:
+			if (source_integers - (current_length - length_buffer) < 12)
+				{
+				*current_length = *(current_length + 1) = *(current_length + 2) = *(current_length + 3) = 32;				// promote
+				break;
+				}
 			for (block = 0; block < 12; block += 4)		// 12 in a double 128-bit word
 				if (*(current_length + block) > 21)
 					*current_length = *(current_length + 1) = *(current_length + 2) = *(current_length + 3) = 32;				// promote
@@ -750,6 +829,11 @@ while (current_length < length_buffer + source_integers)
 				}
 			break;
 		case 32:
+		//	if (source_integers - (current_length - length_buffer) < 4)
+		//		{
+		//		*current_length = *(current_length + 1) = *(current_length + 2) = *(current_length + 3) = 64;				// promote
+		//		break;
+		//		}
 			for (block = 0; block < 4; block += 4)
 				if (*(current_length + block) > 32)
 					*current_length = *(current_length + 1) = *(current_length + 2) = *(current_length + 3) = 64;				// promote
