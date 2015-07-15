@@ -5,6 +5,8 @@
 
 // #define TIME_EVERYTHING 1
 
+#define ANYTIME 1
+
 #include <chrono>
 #include <stdio.h>
 #include <stdlib.h>
@@ -1023,6 +1025,8 @@ chrono::nanoseconds stats_vocab_time;
 chrono::nanoseconds stats_postings_time;
 chrono::nanoseconds stats_sort_time;
 chrono::nanoseconds stats_tmp;
+uint32_t postings_to_process;
+uint32_t postings_processed = 0;
 uint64_t total_number_of_topics;
 chrono::nanoseconds stats_total_time_to_search;
 chrono::nanoseconds stats_total_time_to_search_without_io;
@@ -1045,8 +1049,16 @@ if ((postings = (uint8_t *)read_entire_file("CIpostings.bin")) == NULL)
 	exit(printf("Cannot open postings file 'CIpostings.bin'\n"));
 puts("done"); fflush(stdout);
 
+#ifdef ANYTIME
+if (argc < 1 || argc > 5)
+	exit(printf("Usage:%s <queryfile> [<top-k-number>] [<num-postings-to-proces>] [-d<ecompress then process>]\n", argv[0]));
+
+#else
 if (argc < 1 || argc > 4)
 	exit(printf("Usage:%s <queryfile> [<top-k-number>] [-d<ecompress then process>]\n", argv[0]));
+
+#endif
+
 
 if ((fp = fopen(argv[1], "r")) == NULL)
 	exit(printf("Can't open query file:%s\n", argv[1]));
@@ -1061,14 +1073,31 @@ if ((out = fopen("ranking.txt", "w")) == NULL )
 CI_top_k = CI_unique_documents + 1;
 decompress_then_process = false;
 
+#ifdef ANYTIME
+
 for (parameter = 2; parameter < argc; parameter++)
 	if (strcmp(argv[parameter], "-d") == 0)
 		{
 		puts("Decompress then Process (non-interleaved) mode");
 		decompress_then_process = true;
 		}
-	else
+	else if (parameter == 2)
 		CI_top_k = atoll(argv[parameter]);
+	else if (parameter == 3)
+		postings_to_process = atoi(argv[parameter]);
+#else
+
+for (parameter = 2; parameter < argc; parameter++)
+	if (strcmp(argv[parameter], "-d") == 0)
+		{
+		puts("Decompress then Process (non-interleaved) mode");
+		decompress_then_process = true;
+		}
+	else 
+		CI_top_k = atoll(argv[parameter]);
+
+
+#endif
 
 /*
 	Sort out how to decode the postings (either compressed or not)
@@ -1253,6 +1282,32 @@ while (experimental_repeat < times_to_repeat_experiment)
 		/*
 			Now process each quantum, one at a time
 		*/
+
+
+#ifdef ANYTIME
+
+		postings_processed = 0;
+		for (current_quantum = quantum_order; *current_quantum != 0; current_quantum++)
+			{
+			current_header = (CI_quantum_header *)(postings + *current_quantum);
+			if (postings_processed + current_header->quantum_frequency > postings_to_process) break;
+
+			stats_quantum_count++;
+			start_timer = chrono::steady_clock::now();
+			(*process_postings_list)(postings + current_header->offset, postings + current_header->end, current_header->impact, current_header->quantum_frequency);
+			end_timer = chrono::steady_clock::now();
+			stats_tmp = chrono::duration_cast<chrono::nanoseconds>(end_timer - start_timer);
+			stats_postings_time += stats_tmp;
+			postings_processed += current_header->quantum_frequency;
+
+#ifdef TIME_EVERYTHING
+			printf("I:%lld L:%lld T:%lld\n", (long long)current_header->impact, (long long)current_header->quantum_frequency, stats_tmp);
+#endif
+
+			}
+
+#else
+
 		for (current_quantum = quantum_order; *current_quantum != 0; current_quantum++)
 			{
 			stats_quantum_count++;
@@ -1309,6 +1364,8 @@ while (experimental_repeat < times_to_repeat_experiment)
 				}
 			}
 
+#endif
+
 		/*
 			sort the accumulator pointers to put the highest RSV document at the top of the list
 		*/
@@ -1324,6 +1381,8 @@ while (experimental_repeat < times_to_repeat_experiment)
 		*/
 		end_timer = chrono::steady_clock::now();
 		stats_total_time_to_search_without_io += chrono::duration_cast<chrono::nanoseconds>(end_timer - full_query_without_io_timer);
+
+		//printf("query id,postings processed,us:%d,%d,%d\n", query_id, postings_processed, chrono::duration_cast<chrono::nanoseconds>(end_timer - full_query_without_io_timer)); 
 
 		/*
 			Creat a TREC run file as output

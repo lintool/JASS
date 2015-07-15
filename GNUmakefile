@@ -1,6 +1,4 @@
-ATIRE_DIR = /Users/andrew/programming/ATIRE
-#ATIRE_DIR = /scratch/andrew/atire
-ATIRE_DIR := /fs/clip-hadoop/jimmylin/atire
+ATIRE_DIR = ../atire
 
 ATIRE_OBJ = \
 	$(ATIRE_DIR)/obj/stats.o			\
@@ -72,7 +70,7 @@ MINUS_D += -DNOMINMAX
 MINUS_D += -DIMPACT_HEADER
 MINUS_D += -DFILENAME_INDEX
 
-CI_FLAGS = -x c++ -DCI_FORCEINLINE -msse4 -O3 -I$(ATIRE_DIR)/source $(MINUS_D)
+CI_FLAGS = -x c++ -DCI_FORCEINLINE -msse4 -std=c++11 -O3 -I$(ATIRE_DIR)/source $(MINUS_D)
 
 all : atire_to_main_heap main_heap main_anytime
 
