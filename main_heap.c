@@ -4,7 +4,6 @@
 */
 
 // #define TIME_EVERYTHING 1
-
 #define ANYTIME 1
 
 #include <chrono>
@@ -37,6 +36,7 @@
 #include "compress_qmx.h"
 #include "compress_qmx_d4.h"
 #include "compress_simple8b.h"
+#include "process_postings.h"
 
 using namespace std;
 
@@ -56,10 +56,6 @@ char **CI_documentlist;					// the list of document IDs (TREC document IDs)
 CI_vocab_heap *CI_dictionary;					// the vocab array
 uint32_t CI_unique_terms;
 uint32_t CI_unique_documents;
-
-#define ALIGN_16 __attribute__ ((aligned (16)))
-ALIGN_16 uint32_t *CI_decompressed_postings;
-ALIGN_16 uint8_t *postings;					// the postings themselves
 
 #define MAX_TERMS_PER_QUERY 10
 #define MAX_QUANTUM 0xFF
@@ -139,749 +135,6 @@ return block;
 }
 
 /*
-	CIT_PROCESS_LIST_COMPRESSED_VBYTE()
-	-----------------------------------
-*/
-void CIt_process_list_compressed_vbyte(uint8_t *doclist, uint8_t *end, uint16_t impact, uint32_t integers)
-{
-uint32_t doc, sum;
-
-sum = 0;
-for (uint8_t *i = doclist; i < end;)
-	{
-	if (*i & 0x80)
-		doc = *i++ & 0x7F;
-	else
-		{
-		doc = *i++;
-		while (!(*i & 0x80))
-		   doc = (doc << 7) | *i++;
-		doc = (doc << 7) | (*i++ & 0x7F);
-		}
-	sum += doc;
-	
-	add_rsv(sum, impact);
-	}
-}
-
-/*
-	CIT_PROCESS_LIST_DECOMPRESS_THEN_PROCESS()
-	------------------------------------------
-*/
-void CIt_process_list_decompress_then_process(uint8_t *source, uint8_t *end, uint16_t impact, uint32_t integers)
-{
-uint32_t doc, sum;
-uint32_t *integer, *destination = CI_decompressed_postings;
-
-while (source < end)
-	if (*source & 0x80)
-		*destination++ = *source++ & 0x7F;
-	else
-		{
-		*destination = *source++;
-		while (!(*source & 0x80))
-		   *destination = (*destination << 7) | *source++;
-		*destination = (*destination << 7) | (*source++ & 0x7F);
-		destination++;
-		}
-
-sum = 0;
-integer = CI_decompressed_postings;
-while (integer < destination)
-	{
-	sum += *integer++;
-	add_rsv(sum, impact);
-	}
-}
-
-/*
-	CIT_PROCESS_LIST_NOT_COMPRESSED()
-	---------------------------------
-*/
-void CIt_process_list_not_compressed(uint8_t *doclist, uint8_t *end, uint16_t impact, uint32_t integers)
-{
-uint32_t *i;
-
-for (i = (uint32_t *)doclist; i < (uint32_t *)end; i++)
-	add_rsv(*i, impact);
-}
-
-/*
-	CIT_PROCESS_LIST_COMPRESSED_QMX()
-	---------------------------------
-*/
-ANT_compress_qmx qmx_decoder;
-void CIt_process_list_compressed_qmx(uint8_t *source, uint8_t *end, uint16_t impact, uint32_t integers)
-{
-uint32_t sum, *finish, *current;
-
-qmx_decoder.decodeArray((uint32_t *)source, end - source, CI_decompressed_postings, integers);
-
-sum = 0;
-current = CI_decompressed_postings;
-finish = current + integers;
-while (current < finish)
-	{
-	sum += *current++;
-	add_rsv(sum, impact);
-	}
-}
-
-/*
-	CIT_PROCESS_LIST_COMPRESSED_QMX_D4()
-	------------------------------------
-*/
-ANT_compress_qmx_d4 qmx_d4_decoder;
-void CIt_process_list_compressed_qmx_d4(uint8_t *source, uint8_t *end, uint16_t impact, uint32_t integers)
-{
-uint32_t sum, *finish, *current;
-
-qmx_d4_decoder.decodeArray((uint32_t *)source, end - source, CI_decompressed_postings, integers);
-
-current = CI_decompressed_postings;
-finish = current + integers;
-while (current < finish)
-	add_rsv(*current++, impact);
-}
-
-/*
-	CIT_PROCESS_LIST_COMPRESSED_QMX_D0()
-	------------------------------------
-*/
-void CIt_process_list_compressed_qmx_d0(uint8_t *source, uint8_t *end, uint16_t impact, uint32_t integers)
-{
-uint32_t sum, *finish, *current;
-
-qmx_decoder.decodeArray((uint32_t *)source, end - source, CI_decompressed_postings, integers);
-
-current = CI_decompressed_postings;
-finish = current + integers;
-while (current < finish)
-	add_rsv(*current++, impact);
-}
-
-/*
-	CIT_PROCESS_LIST_COMPRESSED_SIMPLE8B_ATIRE()
-	--------------------------------------------
-*/
-ANT_compress_simple8b simple8b_decoder;
-void CIt_process_list_compressed_simple8b_ATIRE(uint8_t *source, uint8_t *end, uint16_t impact, uint32_t integers)
-{
-uint32_t sum, *finish, *current;
-
-simple8b_decoder.decompress(CI_decompressed_postings, source, integers);
-
-sum = 0;
-current = CI_decompressed_postings;
-finish = current + integers;
-while (current < finish)
-	{
-	sum += *current++;
-	add_rsv(sum, impact);
-	}
-}
-
-/*
-	CIT_PROCESS_LIST_COMPRESSED_SIMPLE8B()
-	--------------------------------------
-*/
-void CIt_process_list_compressed_simple8b(uint8_t *source, uint8_t *end, uint16_t impact, uint32_t integers)
-{
-uint64_t *compressed_sequence = (uint64_t *)source;
-uint32_t mask_type, sum;
-uint64_t value;
-
-sum = 0;
-while (compressed_sequence < (uint64_t *)end)
-	{
-	// Load next compressed int, pull out the mask type used, shift to the values
-	value = *compressed_sequence++;
-	mask_type = value & 0xF;
-	value >>= 4;
-
-	// Unrolled loop to enable pipelining
-	switch (mask_type)
-		{
-		case 0x0:
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			break;
-		case 0x1:
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			sum += 1; add_rsv(sum, impact);
-			break;
-		case 0x2:
-			sum += value & 0x1; add_rsv(sum, impact);
-			sum += (value >> 1) & 0x1; add_rsv(sum, impact);
-			sum += (value >> 2) & 0x1; add_rsv(sum, impact);
-			sum += (value >> 3) & 0x1; add_rsv(sum, impact);
-			sum += (value >> 4) & 0x1; add_rsv(sum, impact);
-			sum += (value >> 5) & 0x1; add_rsv(sum, impact);
-			sum += (value >> 6) & 0x1; add_rsv(sum, impact);
-			sum += (value >> 7) & 0x1; add_rsv(sum, impact);
-			sum += (value >> 8) & 0x1; add_rsv(sum, impact);
-			sum += (value >> 9) & 0x1; add_rsv(sum, impact);
-			sum += (value >> 10) & 0x1; add_rsv(sum, impact);
-			sum += (value >> 11) & 0x1; add_rsv(sum, impact);
-			sum += (value >> 12) & 0x1; add_rsv(sum, impact);
-			sum += (value >> 13) & 0x1; add_rsv(sum, impact);
-			sum += (value >> 14) & 0x1; add_rsv(sum, impact);
-			sum += (value >> 15) & 0x1; add_rsv(sum, impact);
-			sum += (value >> 16) & 0x1; add_rsv(sum, impact);
-			sum += (value >> 17) & 0x1; add_rsv(sum, impact);
-			sum += (value >> 18) & 0x1; add_rsv(sum, impact);
-			sum += (value >> 19) & 0x1; add_rsv(sum, impact);
-			sum += (value >> 20) & 0x1; add_rsv(sum, impact);
-			sum += (value >> 21) & 0x1; add_rsv(sum, impact);
-			sum += (value >> 22) & 0x1; add_rsv(sum, impact);
-			sum += (value >> 23) & 0x1; add_rsv(sum, impact);
-			sum += (value >> 24) & 0x1; add_rsv(sum, impact);
-			sum += (value >> 25) & 0x1; add_rsv(sum, impact);
-			sum += (value >> 26) & 0x1; add_rsv(sum, impact);
-			sum += (value >> 27) & 0x1; add_rsv(sum, impact);
-			sum += (value >> 28) & 0x1; add_rsv(sum, impact);
-			sum += (value >> 29) & 0x1; add_rsv(sum, impact);
-			sum += (value >> 30) & 0x1; add_rsv(sum, impact);
-			sum += (value >> 31) & 0x1; add_rsv(sum, impact);
-			sum += (value >> 32) & 0x1; add_rsv(sum, impact);
-			sum += (value >> 33) & 0x1; add_rsv(sum, impact);
-			sum += (value >> 34) & 0x1; add_rsv(sum, impact);
-			sum += (value >> 35) & 0x1; add_rsv(sum, impact);
-			sum += (value >> 36) & 0x1; add_rsv(sum, impact);
-			sum += (value >> 37) & 0x1; add_rsv(sum, impact);
-			sum += (value >> 38) & 0x1; add_rsv(sum, impact);
-			sum += (value >> 39) & 0x1; add_rsv(sum, impact);
-			sum += (value >> 40) & 0x1; add_rsv(sum, impact);
-			sum += (value >> 41) & 0x1; add_rsv(sum, impact);
-			sum += (value >> 42) & 0x1; add_rsv(sum, impact);
-			sum += (value >> 43) & 0x1; add_rsv(sum, impact);
-			sum += (value >> 44) & 0x1; add_rsv(sum, impact);
-			sum += (value >> 45) & 0x1; add_rsv(sum, impact);
-			sum += (value >> 46) & 0x1; add_rsv(sum, impact);
-			sum += (value >> 47) & 0x1; add_rsv(sum, impact);
-			sum += (value >> 48) & 0x1; add_rsv(sum, impact);
-			sum += (value >> 49) & 0x1; add_rsv(sum, impact);
-			sum += (value >> 50) & 0x1; add_rsv(sum, impact);
-			sum += (value >> 51) & 0x1; add_rsv(sum, impact);
-			sum += (value >> 52) & 0x1; add_rsv(sum, impact);
-			sum += (value >> 53) & 0x1; add_rsv(sum, impact);
-			sum += (value >> 54) & 0x1; add_rsv(sum, impact);
-			sum += (value >> 55) & 0x1; add_rsv(sum, impact);
-			sum += (value >> 56) & 0x1; add_rsv(sum, impact);
-			sum += (value >> 57) & 0x1; add_rsv(sum, impact);
-			sum += (value >> 58) & 0x1; add_rsv(sum, impact);
-			sum += (value >> 59) & 0x1; add_rsv(sum, impact);
-			break;
-		case 0x3:
-			sum += value & 0x3; add_rsv(sum, impact);
-			sum += (value >> 2) & 0x3; add_rsv(sum, impact);
-			sum += (value >> 4) & 0x3; add_rsv(sum, impact);
-			sum += (value >> 6) & 0x3; add_rsv(sum, impact);
-			sum += (value >> 8) & 0x3; add_rsv(sum, impact);
-			sum += (value >> 10) & 0x3; add_rsv(sum, impact);
-			sum += (value >> 12) & 0x3; add_rsv(sum, impact);
-			sum += (value >> 14) & 0x3; add_rsv(sum, impact);
-			sum += (value >> 16) & 0x3; add_rsv(sum, impact);
-			sum += (value >> 18) & 0x3; add_rsv(sum, impact);
-			sum += (value >> 20) & 0x3; add_rsv(sum, impact);
-			sum += (value >> 22) & 0x3; add_rsv(sum, impact);
-			sum += (value >> 24) & 0x3; add_rsv(sum, impact);
-			sum += (value >> 26) & 0x3; add_rsv(sum, impact);
-			sum += (value >> 28) & 0x3; add_rsv(sum, impact);
-			sum += (value >> 30) & 0x3; add_rsv(sum, impact);
-			sum += (value >> 32) & 0x3; add_rsv(sum, impact);
-			sum += (value >> 34) & 0x3; add_rsv(sum, impact);
-			sum += (value >> 36) & 0x3; add_rsv(sum, impact);
-			sum += (value >> 38) & 0x3; add_rsv(sum, impact);
-			sum += (value >> 40) & 0x3; add_rsv(sum, impact);
-			sum += (value >> 42) & 0x3; add_rsv(sum, impact);
-			sum += (value >> 44) & 0x3; add_rsv(sum, impact);
-			sum += (value >> 46) & 0x3; add_rsv(sum, impact);
-			sum += (value >> 48) & 0x3; add_rsv(sum, impact);
-			sum += (value >> 50) & 0x3; add_rsv(sum, impact);
-			sum += (value >> 52) & 0x3; add_rsv(sum, impact);
-			sum += (value >> 54) & 0x3; add_rsv(sum, impact);
-			sum += (value >> 56) & 0x3; add_rsv(sum, impact);
-			sum += (value >> 58) & 0x3; add_rsv(sum, impact);
-			break;
-		case 0x4:
-			sum += value & 0x7; add_rsv(sum, impact);
-			sum += (value >> 3) & 0x7; add_rsv(sum, impact);
-			sum += (value >> 6) & 0x7; add_rsv(sum, impact);
-			sum += (value >> 9) & 0x7; add_rsv(sum, impact);
-			sum += (value >> 12) & 0x7; add_rsv(sum, impact);
-			sum += (value >> 15) & 0x7; add_rsv(sum, impact);
-			sum += (value >> 18) & 0x7; add_rsv(sum, impact);
-			sum += (value >> 21) & 0x7; add_rsv(sum, impact);
-			sum += (value >> 24) & 0x7; add_rsv(sum, impact);
-			sum += (value >> 27) & 0x7; add_rsv(sum, impact);
-			sum += (value >> 30) & 0x7; add_rsv(sum, impact);
-			sum += (value >> 33) & 0x7; add_rsv(sum, impact);
-			sum += (value >> 36) & 0x7; add_rsv(sum, impact);
-			sum += (value >> 39) & 0x7; add_rsv(sum, impact);
-			sum += (value >> 42) & 0x7; add_rsv(sum, impact);
-			sum += (value >> 45) & 0x7; add_rsv(sum, impact);
-			sum += (value >> 48) & 0x7; add_rsv(sum, impact);
-			sum += (value >> 51) & 0x7; add_rsv(sum, impact);
-			sum += (value >> 54) & 0x7; add_rsv(sum, impact);
-			sum += (value >> 57) & 0x7; add_rsv(sum, impact);
-			break;
-		case 0x5:
-			sum += value & 0xF; add_rsv(sum, impact);
-			sum += (value >> 4) & 0xF; add_rsv(sum, impact);
-			sum += (value >> 8) & 0xF; add_rsv(sum, impact);
-			sum += (value >> 12) & 0xF; add_rsv(sum, impact);
-			sum += (value >> 16) & 0xF; add_rsv(sum, impact);
-			sum += (value >> 20) & 0xF; add_rsv(sum, impact);
-			sum += (value >> 24) & 0xF; add_rsv(sum, impact);
-			sum += (value >> 28) & 0xF; add_rsv(sum, impact);
-			sum += (value >> 32) & 0xF; add_rsv(sum, impact);
-			sum += (value >> 36) & 0xF; add_rsv(sum, impact);
-			sum += (value >> 40) & 0xF; add_rsv(sum, impact);
-			sum += (value >> 44) & 0xF; add_rsv(sum, impact);
-			sum += (value >> 48) & 0xF; add_rsv(sum, impact);
-			sum += (value >> 52) & 0xF; add_rsv(sum, impact);
-			sum += (value >> 56) & 0xF; add_rsv(sum, impact);
-			break;
-		case 0x6:
-			sum += value & 0x1F; add_rsv(sum, impact);
-			sum += (value >> 5) & 0x1F; add_rsv(sum, impact);
-			sum += (value >> 10) & 0x1F; add_rsv(sum, impact);
-			sum += (value >> 15) & 0x1F; add_rsv(sum, impact);
-			sum += (value >> 20) & 0x1F; add_rsv(sum, impact);
-			sum += (value >> 25) & 0x1F; add_rsv(sum, impact);
-			sum += (value >> 30) & 0x1F; add_rsv(sum, impact);
-			sum += (value >> 35) & 0x1F; add_rsv(sum, impact);
-			sum += (value >> 40) & 0x1F; add_rsv(sum, impact);
-			sum += (value >> 45) & 0x1F; add_rsv(sum, impact);
-			sum += (value >> 50) & 0x1F; add_rsv(sum, impact);
-			sum += (value >> 55) & 0x1F; add_rsv(sum, impact);
-			break;
-		case 0x7:
-			sum += value & 0x3F; add_rsv(sum, impact);
-			sum += (value >> 6) & 0x3F; add_rsv(sum, impact);
-			sum += (value >> 12) & 0x3F; add_rsv(sum, impact);
-			sum += (value >> 18) & 0x3F; add_rsv(sum, impact);
-			sum += (value >> 24) & 0x3F; add_rsv(sum, impact);
-			sum += (value >> 30) & 0x3F; add_rsv(sum, impact);
-			sum += (value >> 36) & 0x3F; add_rsv(sum, impact);
-			sum += (value >> 42) & 0x3F; add_rsv(sum, impact);
-			sum += (value >> 48) & 0x3F; add_rsv(sum, impact);
-			sum += (value >> 54) & 0x3F; add_rsv(sum, impact);
-			break;
-		case 0x8:
-			sum += value & 0x7F; add_rsv(sum, impact);
-			sum += (value >> 7) & 0x7F; add_rsv(sum, impact);
-			sum += (value >> 14) & 0x7F; add_rsv(sum, impact);
-			sum += (value >> 21) & 0x7F; add_rsv(sum, impact);
-			sum += (value >> 28) & 0x7F; add_rsv(sum, impact);
-			sum += (value >> 35) & 0x7F; add_rsv(sum, impact);
-			sum += (value >> 42) & 0x7F; add_rsv(sum, impact);
-			sum += (value >> 49) & 0x7F; add_rsv(sum, impact);
-			break;
-		case 0x9:
-			sum += value & 0xFF; add_rsv(sum, impact);
-			sum += (value >> 8) & 0xFF; add_rsv(sum, impact);
-			sum += (value >> 16) & 0xFF; add_rsv(sum, impact);
-			sum += (value >> 24) & 0xFF; add_rsv(sum, impact);
-			sum += (value >> 32) & 0xFF; add_rsv(sum, impact);
-			sum += (value >> 40) & 0xFF; add_rsv(sum, impact);
-			sum += (value >> 48) & 0xFF; add_rsv(sum, impact);
-			break;
-		case 0xA:
-			sum += value & 0x3FF; add_rsv(sum, impact);
-			sum += (value >> 10) & 0x3FF; add_rsv(sum, impact);
-			sum += (value >> 20) & 0x3FF; add_rsv(sum, impact);
-			sum += (value >> 30) & 0x3FF; add_rsv(sum, impact);
-			sum += (value >> 40) & 0x3FF; add_rsv(sum, impact);
-			sum += (value >> 50) & 0x3FF; add_rsv(sum, impact);
-			break;
-		case 0xB:
-			sum += value & 0xFFF; add_rsv(sum, impact);
-			sum += (value >> 12) & 0xFFF; add_rsv(sum, impact);
-			sum += (value >> 24) & 0xFFF; add_rsv(sum, impact);
-			sum += (value >> 36) & 0xFFF; add_rsv(sum, impact);
-			sum += (value >> 48) & 0xFFF; add_rsv(sum, impact);
-			break;
-		case 0xC:
-			sum += value & 0x7FFF; add_rsv(sum, impact);
-			sum += (value >> 15) & 0x7FFF; add_rsv(sum, impact);
-			sum += (value >> 30) & 0x7FFF; add_rsv(sum, impact);
-			sum += (value >> 45) & 0x7FFF; add_rsv(sum, impact);
-			break;
-		case 0xD:
-			sum += value & 0xFFFFF; add_rsv(sum, impact);
-			sum += (value >> 20) & 0xFFFFF; add_rsv(sum, impact);
-			sum += (value >> 40) & 0xFFFFF; add_rsv(sum, impact);
-			break;
-		case 0xE:
-			sum += value & 0x3FFFFFFF; add_rsv(sum, impact);
-			sum += (value >> 30) & 0x3FFFFFFF; add_rsv(sum, impact);
-			break;
-		case 0xF:
-			sum += value & 0xFFFFFFFFFFFFFFFL; add_rsv(sum, impact);
-			break;
-		}
-	}
-}
-
-/*
 	struct CI_QUANTUM_HEADER
 	------------------------
 */
@@ -956,7 +209,7 @@ uint64_t total_docs;
 uint64_t length;
 uint64_t *offset_base;
 
-printf("Load doclist..."); fflush(stdout);
+printf("Loading doclist... "); fflush(stdout);
 if ((doclist = read_entire_file("CIdoclist.bin", &length)) == 0)
 	exit(printf("Can't read CIdoclist.bin"));
 
@@ -984,7 +237,7 @@ uint64_t length;
 uint64_t *base;
 uint64_t term;
 
-printf("Load vocab..."); fflush(stdout);
+printf("Loading vocab... "); fflush(stdout);
 if ((vocab = read_entire_file("CIvocab.bin", &length)) == NULL)
 	exit(printf("Can't read CIvocab.bin"));
 if ((vocab_terms = read_entire_file("CIvocab_terms.bin")) == NULL)
@@ -1044,29 +297,6 @@ CI_quantum_header *current_header;
 void (*process_postings_list)(uint8_t *doclist, uint8_t *end, uint16_t impact, uint32_t integers);
 uint32_t parameter, decompress_then_process;
 
-printf("Load postings..."); fflush(stdout);
-if ((postings = (uint8_t *)read_entire_file("CIpostings.bin")) == NULL)
-	exit(printf("Cannot open postings file 'CIpostings.bin'\n"));
-puts("done"); fflush(stdout);
-
-#ifdef ANYTIME
-if (argc < 1 || argc > 5)
-	exit(printf("Usage:%s <queryfile> [<top-k-number>] [<num-postings-to-proces>] [-d<ecompress then process>]\n", argv[0]));
-
-#else
-if (argc < 1 || argc > 4)
-	exit(printf("Usage:%s <queryfile> [<top-k-number>] [-d<ecompress then process>]\n", argv[0]));
-
-#endif
-
-
-if ((fp = fopen(argv[1], "r")) == NULL)
-	exit(printf("Can't open query file:%s\n", argv[1]));
-
-if ((out = fopen("ranking.txt", "w")) == NULL )
-  exit(printf("Can't open output file.\n"));
-
-
 /*
 	Parameter parsing
 */
@@ -1074,30 +304,61 @@ CI_top_k = CI_unique_documents + 1;
 decompress_then_process = false;
 
 #ifdef ANYTIME
+if (argc < 1 || argc > 5)
+	exit(printf("Usage:%s <queryfile> [<top-k-number>] [<num-postings-to-proces>] [-d<ecompress then process>]\n", argv[0]));
 
 for (parameter = 2; parameter < argc; parameter++)
 	if (strcmp(argv[parameter], "-d") == 0)
 		{
-		puts("Decompress then Process (non-interleaved) mode");
 		decompress_then_process = true;
 		}
 	else if (parameter == 2)
 		CI_top_k = atoll(argv[parameter]);
 	else if (parameter == 3)
 		postings_to_process = atoi(argv[parameter]);
+
+printf("Ranking mode: anytime\n");
+printf("Settings: top k = %d, postings to process = %d", CI_top_k, postings_to_process);
+if (decompress_then_process) {
+  printf(", decompress then process (non-interleaved)\n");
+ } else{
+  printf(", interleaving decompression and postings processing\n");
+ }
+
 #else
+if (argc < 1 || argc > 4)
+	exit(printf("Usage:%s <queryfile> [<top-k-number>] [-d<ecompress then process>]\n", argv[0]));
 
 for (parameter = 2; parameter < argc; parameter++)
 	if (strcmp(argv[parameter], "-d") == 0)
 		{
-		puts("Decompress then Process (non-interleaved) mode");
 		decompress_then_process = true;
 		}
 	else 
 		CI_top_k = atoll(argv[parameter]);
 
 
+printf("Ranking mode: early termination\n");
+printf("Settings: top k = %d", CI_top_k);
+if (decompress_then_process) {
+  printf(", decompress then process (non-interleaved)\n");
+ } else{
+  printf(", interleaving decompression and postings processing\n");
+ }
+
 #endif
+
+printf("Loading postings... "); fflush(stdout);
+if ((postings = (uint8_t *)read_entire_file("CIpostings.bin")) == NULL)
+	exit(printf("Cannot open postings file 'CIpostings.bin'\n"));
+puts("done"); fflush(stdout);
+
+
+if ((fp = fopen(argv[1], "r")) == NULL)
+	exit(printf("Can't open query file:%s\n", argv[1]));
+
+if ((out = fopen("ranking.txt", "w")) == NULL )
+  exit(printf("Can't open output file.\n"));
 
 /*
 	Sort out how to decode the postings (either compressed or not)
@@ -1399,14 +660,14 @@ stats_total_time_to_search += chrono::duration_cast<chrono::nanoseconds>(end_tim
 print_os_time();
 
 printf("Averages over %llu queries\n", total_number_of_topics);
-printf("Accumulator initialisation per query : %10llu ns\n", stats_accumulator_time.count() / total_number_of_topics);
-printf("Vocabulary lookup per query          : %10llu ns\n", stats_vocab_time.count() / total_number_of_topics);
-printf("QaaT prep time per query             : %10llu ns\n", stats_quantum_prep_time.count() / total_number_of_topics);
-printf("Process postings per query           : %10llu ns\n", stats_postings_time.count() / total_number_of_topics);
-printf("QaaT early terminate check per query : %10llu ns\n", stats_early_terminate_check_time.count() / total_number_of_topics);
-printf("Order the top-k per query            : %10llu ns\n", stats_sort_time.count() / total_number_of_topics);
-printf("Total time excluding I/O per query   : %10llu ns\n", stats_total_time_to_search_without_io.count() / total_number_of_topics);
-printf("Total run time                       : %10llu ns\n", stats_total_time_to_search.count());
+printf("Accumulator initialisation per query : %12llu ns\n", stats_accumulator_time.count() / total_number_of_topics);
+printf("Vocabulary lookup per query          : %12llu ns\n", stats_vocab_time.count() / total_number_of_topics);
+printf("QaaT prep time per query             : %12llu ns\n", stats_quantum_prep_time.count() / total_number_of_topics);
+printf("Process postings per query           : %12llu ns\n", stats_postings_time.count() / total_number_of_topics);
+printf("QaaT early terminate check per query : %12llu ns\n", stats_early_terminate_check_time.count() / total_number_of_topics);
+printf("Order the top-k per query            : %12llu ns\n", stats_sort_time.count() / total_number_of_topics);
+printf("Total time excluding I/O per query   : %12llu ns\n", stats_total_time_to_search_without_io.count() / total_number_of_topics);
+printf("Total run time                       : %12llu ns\n", stats_total_time_to_search.count());
 
 printf("Total number of QaaT early terminate checks : %10llu\n", stats_quantum_check_count);
 printf("Total number of QaaT early terminations     : %10llu\n", stats_early_terminations);
