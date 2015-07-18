@@ -1,10 +1,7 @@
-/*
- MAIN_HEAP.C
- -----------
- */
-
-// #define TIME_EVERYTHING 1
-#define ANYTIME 1
+// #define TIME_EACH_POSTINGS_SEGMENT 1
+// #define PRINT_PER_QUERY_STATS 1
+#define TIME_EACH_QUERY_PHASE 1
+// #define ANYTIME 1
 
 #include <chrono>
 #include <stdio.h>
@@ -59,6 +56,7 @@ uint32_t CI_unique_terms;
 uint32_t CI_unique_documents;
 
 #define MAX_TERMS_PER_QUERY 10
+#define MAX_QUERIES 1000
 #define MAX_QUANTUM 0xFF
 
 #ifdef _MSC_VER
@@ -229,18 +227,21 @@ void read_vocab(void) {
 int main(int argc, char *argv[]) {
   chrono::time_point<chrono::steady_clock, chrono::nanoseconds> full_query_timer = chrono::steady_clock::now();
   chrono::time_point<chrono::steady_clock, chrono::nanoseconds> start_timer, end_timer, full_query_without_io_timer;
+  chrono::nanoseconds stats_total_time_to_search;
+  chrono::nanoseconds stats_total_time_to_search_without_io;
+  chrono::nanoseconds stats_tmp;
+#ifdef TIME_EACH_QUERY_PHASE
   chrono::nanoseconds stats_accumulator_time;
   chrono::nanoseconds stats_vocab_time;
   chrono::nanoseconds stats_postings_time;
   chrono::nanoseconds stats_sort_time;
-  chrono::nanoseconds stats_tmp;
-  chrono::nanoseconds stats_total_time_to_search;
-  chrono::nanoseconds stats_total_time_to_search_without_io;
   chrono::nanoseconds stats_quantum_prep_time;
   chrono::nanoseconds stats_early_terminate_check_time;
+#endif
 
   static char buffer[1024];
   const char *SEPERATORS = " \t\r\n";
+  int i;
   FILE *fp, *out;
   char *term, *id;
   uint64_t query_id;
@@ -260,6 +261,10 @@ int main(int argc, char *argv[]) {
   CI_quantum_header *current_header;
   void (*process_postings_list)(uint8_t *doclist, uint8_t *end, uint16_t impact, uint32_t integers);
   uint32_t parameter, decompress_then_process;
+
+  uint64_t queries_id[MAX_QUERIES];
+  uint32_t queries_num_postings[MAX_QUERIES];
+  uint64_t queries_latency[MAX_QUERIES];
 
   /*
    Parameter parsing
@@ -301,6 +306,7 @@ int main(int argc, char *argv[]) {
     } else {
       CI_top_k = atoll(argv[parameter]);
     }
+  }
 
   printf("Ranking mode: early termination\n");
   printf("Settings: top k = %d", CI_top_k);
@@ -404,7 +410,7 @@ int main(int argc, char *argv[]) {
   quantum_order = new uint64_t[MAX_TERMS_PER_QUERY * MAX_QUANTUM];
   quantum_check_pointers = new uint16_t * [accumulators_needed];
 
-#ifdef TIME_EVERYTHING
+#ifdef TIME_EACH_POSTINGS_SEGMENT
   times_to_repeat_experiment = 1;
 #endif
 
@@ -414,14 +420,16 @@ int main(int argc, char *argv[]) {
   while (experimental_repeat < times_to_repeat_experiment) {
     experimental_repeat++;
 
-    stats_accumulator_time = chrono::nanoseconds(0);
-    stats_vocab_time = chrono::nanoseconds(0);
-    stats_postings_time = chrono::nanoseconds(0);
-    stats_sort_time = chrono::nanoseconds(0);
     stats_total_time_to_search = chrono::nanoseconds(0);
     stats_total_time_to_search_without_io = chrono::nanoseconds(0);
+#ifdef TIME_EACH_QUERY_PHASE
+    stats_accumulator_time = chrono::nanoseconds(0);
+    stats_vocab_time = chrono::nanoseconds(0);
     stats_quantum_prep_time = chrono::nanoseconds(0);
     stats_early_terminate_check_time = chrono::nanoseconds(0);
+    stats_postings_time = chrono::nanoseconds(0);
+    stats_sort_time = chrono::nanoseconds(0);
+#endif
 
     total_number_of_topics = 0;
     stats_quantum_check_count = 0;
@@ -440,50 +448,44 @@ int main(int argc, char *argv[]) {
       total_number_of_topics++;
       CI_results_list_length = 0;
 
-      /*
-       get the TREC query_id
-       */
       query_id = atoll(id);
 
-      /*
-       Initialise the accumulators
-       */
+      // Initialize the accumulators
+#ifdef TIME_EACH_QUERY_PHASE
       start_timer = chrono::steady_clock::now();
+#endif
       memset(CI_accumulator_clean_flags, 0, CI_accumulators_height);
+#ifdef TIME_EACH_QUERY_PHASE
       end_timer = chrono::steady_clock::now();
       stats_accumulator_time += chrono::duration_cast<chrono::nanoseconds>(end_timer - start_timer);
+#endif
 
-      /*
-       For each term, drag out the pointer list and add it to the list of quantums to process
-       */
       max_remaining_impact = 0;
       current_quantum = quantum_order;
       early_terminate = false;
 
       while ((term = strtok(NULL, SEPERATORS)) != NULL) {
+#ifdef TIME_EACH_QUERY_PHASE
         start_timer = chrono::steady_clock::now();
+#endif
         postings_list = (CI_vocab_heap *) bsearch(term, CI_dictionary, CI_unique_terms, sizeof(*CI_dictionary), CI_vocab_heap::compare_string);
+#ifdef TIME_EACH_QUERY_PHASE
         end_timer = chrono::steady_clock::now();
         stats_vocab_time += chrono::duration_cast<chrono::nanoseconds>(end_timer - start_timer);
+#endif
 
-        /*
-         Initialise the QaaT (Quantum at a Time) structures
-         */
+        // Initializee the SaaT structures
+#ifdef TIME_EACH_QUERY_PHASE
         start_timer = chrono::steady_clock::now();
+#endif
         if (postings_list != NULL) {
-          /*
-           Copy this term's pointers to the quantum list
-           */
+          // Copy this term's pointers to the segments list
           memcpy(current_quantum, postings + postings_list->offset, postings_list->impacts * sizeof(*quantum_order));
 
-          /*
-           Compute the maximum possibe impact score (that is, assume one document has the maximum impact of each term)
-           */
+          // Compute the maximum possibe impact score (that is, assume one document has the maximum impact for each term)
           max_remaining_impact += ((CI_quantum_header *) (postings + *current_quantum))->impact;
 
-          /*
-           Advance to the place we want to place the next quantum set
-           */
+          // Advance to the place we want to place the next set of segments
           current_quantum += postings_list->impacts;
         }
       }
@@ -497,14 +499,15 @@ int main(int argc, char *argv[]) {
        */
       qsort(quantum_order, current_quantum - quantum_order, sizeof(*quantum_order), quantum_compare);
 
+#ifdef TIME_EACH_QUERY_PHASE
       end_timer = chrono::steady_clock::now();
       stats_quantum_prep_time += chrono::duration_cast<chrono::nanoseconds>(end_timer - start_timer);
+#endif
       /*
        Now process each quantum, one at a time
        */
 
 #ifdef ANYTIME
-
       postings_processed = 0;
       for (current_quantum = quantum_order; *current_quantum != 0; current_quantum++) {
         current_header = (CI_quantum_header *) (postings + *current_quantum);
@@ -513,15 +516,19 @@ int main(int argc, char *argv[]) {
         }
 
         stats_quantum_count++;
+#ifdef TIME_EACH_QUERY_PHASE
         start_timer = chrono::steady_clock::now();
+#endif
         (*process_postings_list)(postings + current_header->offset, postings + current_header->end,
             current_header->impact, current_header->quantum_frequency);
+#ifdef TIME_EACH_QUERY_PHASE
         end_timer = chrono::steady_clock::now();
         stats_tmp = chrono::duration_cast<chrono::nanoseconds>(end_timer - start_timer);
         stats_postings_time += stats_tmp;
+#endif
         postings_processed += current_header->quantum_frequency;
 
-#ifdef TIME_EVERYTHING
+#ifdef TIME_EACH_POSTINGS_SEGMENT
         printf("I:%lld L:%lld T:%lld\n", (long long)current_header->impact, (long long)current_header->quantum_frequency, stats_tmp);
 #endif
 
@@ -533,24 +540,25 @@ int main(int argc, char *argv[]) {
         stats_quantum_count++;
 
         current_header = (CI_quantum_header *)(postings + *current_quantum);
+#ifdef TIME_EACH_QUERY_PHASE
         start_timer = chrono::steady_clock::now();
+#endif
         (*process_postings_list)(postings + current_header->offset, postings + current_header->end, current_header->impact, current_header->quantum_frequency);
+#ifdef TIME_EACH_QUERY_PHASE
         end_timer = chrono::steady_clock::now();
         stats_tmp = chrono::duration_cast<chrono::nanoseconds>(end_timer - start_timer);
         stats_postings_time += stats_tmp;
+#endif
 
-#ifdef TIME_EVERYTHING
+#ifdef TIME_EACH_POSTINGS_SEGMENT
         printf("I:%lld L:%lld T:%lld\n", (long long)current_header->impact, (long long)current_header->quantum_frequency, stats_tmp);
 #endif
 
-        /*
-         Check to see if its posible for the remaining impacts to affect the order of the top-k
-         */
+        // Check to see if it's posible for the remaining impacts to affect the order of the top-k.
+#ifdef TIME_EACH_QUERY_PHASE
         start_timer = chrono::steady_clock::now();
-
-        /*
-         Subtract the current impact score and then add the next impact score for the current term
-         */
+#endif
+        // Subtract the current impact score and then add the next impact score for the current term.
         max_remaining_impact -= current_header->impact;
         max_remaining_impact += (current_header + 1)->impact;
 
@@ -567,14 +575,17 @@ int main(int argc, char *argv[]) {
 
           early_terminate = true;
 
-          for (partial_rsv = quantum_check_pointers; partial_rsv < quantum_check_pointers + CI_top_k - 1; partial_rsv++)
-          if (**partial_rsv - **(partial_rsv + 1) < max_remaining_impact) { // We're sorted from largest to smallest so a[x] - a[x+1] >= 0
-            early_terminate = false;
-            break;
+          for (partial_rsv = quantum_check_pointers; partial_rsv < quantum_check_pointers + CI_top_k - 1; partial_rsv++) {
+            if (**partial_rsv - **(partial_rsv + 1) < max_remaining_impact) { // We're sorted from largest to smallest so a[x] - a[x+1] >= 0
+              early_terminate = false;
+              break;
+            }
           }
         }
+#ifdef TIME_EACH_QUERY_PHASE
         end_timer = chrono::steady_clock::now();
         stats_early_terminate_check_time += chrono::duration_cast<chrono::nanoseconds>(end_timer - start_timer);
+#endif
         if (early_terminate) {
           stats_early_terminations++;
           break;
@@ -583,13 +594,15 @@ int main(int argc, char *argv[]) {
 
 #endif
 
-      /*
-       sort the accumulator pointers to put the highest RSV document at the top of the list
-       */
+      // Sort the accumulator pointers to put the highest RSV document at the top of the list.
+#ifdef TIME_EACH_QUERY_PHASE
       start_timer = chrono::steady_clock::now();
+#endif
       top_k_qsort(CI_accumulator_pointers, CI_results_list_length, CI_top_k - 1);
+#ifdef TIME_EACH_QUERY_PHASE
       end_timer = chrono::steady_clock::now();
       stats_sort_time += chrono::duration_cast<chrono::nanoseconds>(end_timer - start_timer);
+#endif
 
       /*
        At this point we know the number of hits (CI_results_list_length) and they can be decode out of the CI_accumulator_pointers array
@@ -597,14 +610,17 @@ int main(int argc, char *argv[]) {
        and *CI_accumulator_pointers[0] is the rsv.
        */
       end_timer = chrono::steady_clock::now();
-      stats_total_time_to_search_without_io += chrono::duration_cast<chrono::nanoseconds>(end_timer - full_query_without_io_timer);
+      stats_tmp = chrono::duration_cast<chrono::nanoseconds>(end_timer - full_query_without_io_timer);
+      stats_total_time_to_search_without_io += stats_tmp;
 
-      //printf("query id,postings processed,us:%d,%d,%d\n", query_id, postings_processed, chrono::duration_cast<chrono::nanoseconds>(end_timer - full_query_without_io_timer));
+#ifdef PRINT_PER_QUERY_STATS
+      queries_id[total_number_of_topics-1] = query_id;
+      queries_num_postings[total_number_of_topics-1] = postings_processed;
+      queries_latency[total_number_of_topics-1] = stats_tmp.count();
+#endif
 
-      /*
-       Creat a TREC run file as output
-       */
-      trec_dump_results(query_id, out, CI_top_k - 1);	// subtract 1 from top_k because we added 1 for the early termination checks
+      // Dump TREC output
+      trec_dump_results(query_id, out, CI_top_k - 1);	// Subtract 1 from top_k because we added 1 for the early termination checks.
     }
   }
 
@@ -615,19 +631,34 @@ int main(int argc, char *argv[]) {
   stats_total_time_to_search += chrono::duration_cast<chrono::nanoseconds>(end_timer - full_query_timer);
   print_os_time();
 
-  printf("Averages over %llu queries\n", total_number_of_topics);
-  printf("Accumulator initialisation per query : %12llu ns\n", stats_accumulator_time.count() / total_number_of_topics);
-  printf("Vocabulary lookup per query          : %12llu ns\n", stats_vocab_time.count() / total_number_of_topics);
-  printf("QaaT prep time per query             : %12llu ns\n", stats_quantum_prep_time.count() / total_number_of_topics);
-  printf("Process postings per query           : %12llu ns\n", stats_postings_time.count() / total_number_of_topics);
-  printf("QaaT early terminate check per query : %12llu ns\n", stats_early_terminate_check_time.count() / total_number_of_topics);
-  printf("Order the top-k per query            : %12llu ns\n", stats_sort_time.count() / total_number_of_topics);
-  printf("Total time excluding I/O per query   : %12llu ns\n", stats_total_time_to_search_without_io.count() / total_number_of_topics);
-  printf("Total run time                       : %12llu ns\n", stats_total_time_to_search.count());
+  printf("\nAverages over %llu queries\n", total_number_of_topics);
+  printf("--------------------------------------------------------\n");
+#ifdef TIME_EACH_QUERY_PHASE
+  printf("Accumulator initialization (per query) : %12llu ns\n", stats_accumulator_time.count() / total_number_of_topics);
+  printf("Vocabulary lookup          (per query) : %12llu ns\n", stats_vocab_time.count() / total_number_of_topics);
+  printf("SaaT prep time             (per query) : %12llu ns\n", stats_quantum_prep_time.count() / total_number_of_topics);
+  printf("Processing postings        (per query) : %12llu ns\n", stats_postings_time.count() / total_number_of_topics);
+#ifndef ANYTIME
+  printf("SaaT early terminate check (per query) : %12llu ns\n", stats_early_terminate_check_time.count() / total_number_of_topics);
+#endif
+  printf("Extracting top-k           (per query) : %12llu ns\n", stats_sort_time.count() / total_number_of_topics);
+#endif
+  printf("Total time excluding I/O   (per query) : %12llu ns\n", stats_total_time_to_search_without_io.count() / total_number_of_topics);
+  printf("--------------------------------------------------------\n");
+  printf("Total running time                     : %12llu ns\n", stats_total_time_to_search.count());
+  printf("--------------------------------------------------------\n");
+#ifndef ANYTIME
+  printf("Total number of early terminate checks : %12llu\n", stats_quantum_check_count);
+  printf("Total number of early terminations     : %12llu\n", stats_early_terminations);
+#endif
+  printf("Total number of segments processed     : %12llu\n", stats_quantum_count);
+  printf("--------------------------------------------------------\n");
 
-  printf("Total number of QaaT early terminate checks : %10llu\n", stats_quantum_check_count);
-  printf("Total number of QaaT early terminations     : %10llu\n", stats_early_terminations);
-  printf("Total number of quantums processed          : %10llu\n", stats_quantum_count);
+#ifdef PRINT_PER_QUERY_STATS
+  for (i=0; i<total_number_of_topics; i++) {
+    printf("query id,postings processed,ns:%llu,%d,%llu\n", queries_id[i], queries_num_postings[i], queries_latency[i]);
+  }
+#endif
 
   return 0;
 }
