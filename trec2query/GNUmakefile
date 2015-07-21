@@ -1,5 +1,5 @@
 CC := g++
-ATIRE_DIR := /Users/mcrane/atire
+ATIRE_DIR := ../../atire
 ATIRE_OBJECTS = $(wildcard $(ATIRE_DIR)/obj/*.o)
 
 MAINS := atire atire_broker atire_client atire_dictionary atire_doclist atire_merge index
