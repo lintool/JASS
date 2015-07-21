@@ -1,7 +1,7 @@
 // #define TIME_EACH_POSTINGS_SEGMENT 1
 // #define PRINT_PER_QUERY_STATS 1
-#define TIME_EACH_QUERY_PHASE 1
-// #define ANYTIME 1
+// #define TIME_EACH_QUERY_PHASE 1
+#define ANYTIME 1
 
 #include <chrono>
 #include <stdio.h>
