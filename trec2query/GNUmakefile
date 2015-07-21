@@ -10,10 +10,10 @@ ATIRE_OBJ = $(filter-out $(MAINS),$(ATIRE_OBJECTS))
 all : trec2query
 
 trec2query : trec2query.o
-	$(CC) trec2query.o ${ATIRE_OBJ} ${ATIRE_DIR}/external/unencumbered/snowball/libstemmer.a ${ATIRE_DIR}/external/gpl/lzo/liblzo2.a ${ATIRE_DIR}/external/unencumbered/zlib/libz.a ${ATIRE_DIR}/external/unencumbered/bzip/libbz2.a ${ATIRE_DIR}/external/unencumbered/snappy/libsnappy.a -o trec2query
+	$(CC) trec2query.o ${ATIRE_OBJ} ${ATIRE_DIR}/external/unencumbered/snowball/libstemmer.a ${ATIRE_DIR}/external/gpl/lzo/liblzo2.a ${ATIRE_DIR}/external/unencumbered/zlib/libz.a ${ATIRE_DIR}/external/unencumbered/bzip/libbz2.a ${ATIRE_DIR}/external/unencumbered/snappy/libsnappy.a -ldl -lpthread -o trec2query
 
 %.o : %.c
-	$(CC) -I${ATIRE_DIR} -g -x c++ -c $<
+	$(CC) -I${ATIRE_DIR} -g -x c++ -c -lpthread $<
 
 clean :
 	\rm -f *.o $(TARGETS)
