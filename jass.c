@@ -1,5 +1,5 @@
 // #define TIME_EACH_POSTINGS_SEGMENT 1
-// #define PRINT_PER_QUERY_STATS 1
+#define PRINT_PER_QUERY_STATS 1
 // #define TIME_EACH_QUERY_PHASE 1
 #define ANYTIME 1
 
@@ -252,7 +252,7 @@ int main(int argc, char *argv[]) {
   uint64_t total_number_of_topics;
   uint32_t accumulators_needed;
   uint64_t stats_quantum_check_count, stats_quantum_count, stats_early_terminations;
-  uint64_t experimental_repeat = 0, times_to_repeat_experiment = 2;
+  uint64_t experimental_repeat = 0, times_to_repeat_experiment = 1;
   uint64_t *quantum_order, *current_quantum;
   uint64_t max_remaining_impact;
   uint16_t **quantum_check_pointers;
