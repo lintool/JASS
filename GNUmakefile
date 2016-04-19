@@ -74,11 +74,11 @@ CI_FLAGS = -x c++ -DCI_FORCEINLINE -msse4 -std=c++11 -O3 -I$(ATIRE_DIR)/source $
 
 all : atire_to_jass_index jass
 
-jass : jass.c CI.c compress_qmx.c maths.c compress_qmx_d4.c process_postings.c
-	g++ $(CI_FLAGS) jass.c CI.c compress_simple8b.c compress_qmx.c compress_qmx_d4.c maths.c process_postings.c -o jass
+jass : jass.c CI.c compress_qmx.c maths.c compress_qmx_d4.c compress_elias_fano.c process_postings.c GNUmakefile
+	g++ $(CI_FLAGS) jass.c CI.c compress_simple8b.c compress_qmx.c compress_qmx_d4.c compress_elias_fano.c maths.c process_postings.c -o jass
 
-atire_to_jass_index : atire_to_jass_index.c
-	g++ $(ATIRE_OBJ) $(ATIRE_LIBS) $(CI_FLAGS) atire_to_jass_index.c compress_variable_byte.c compress_simple8b.c compress_qmx.c compress_qmx_d4.c maths.c -o atire_to_jass_index
+atire_to_jass_index : atire_to_jass_index.c compress_elias_fano.c compress_elias_fano.h GNUmakefile
+	g++ $(ATIRE_OBJ) $(ATIRE_LIBS) $(CI_FLAGS) atire_to_jass_index.c compress_elias_fano.c compress_variable_byte.c compress_simple8b.c compress_qmx.c compress_qmx_d4.c maths.c -o atire_to_jass_index
 
 clean:
 	-rm atire_to_jass_index jass *.o CIvocab.c CIpostings.h CIpostings.c CIdoclist.c CIvocab_heap.c CIpostings.bin CIdoclist.bin CIvocab.bin CIvocab_terms.bin

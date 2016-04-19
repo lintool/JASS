@@ -21,6 +21,8 @@
 #include "compress_qmx.h"
 #include "compress_qmx_d4.h"
 
+#include "compress_elias_fano.h"
+
 #ifndef IMPACT_HEADER
 	#error "set IMPACT_HEADER in the ATIRE makefile and start all over again"
 #endif
@@ -126,7 +128,7 @@ qsort(termlist, termlist_length, sizeof(*termlist), string_compare);
 */
 uint8_t usage(char *filename)
 {
-printf("Usage: %s <index.aspt> [<topicfile>] [-c|-s|-q|-Q] [-SSE]", filename);
+printf("Usage: %s <index.aspt> [<topicfile>] [-c|-s|-q|-Q|-E] [-SSE]\n", filename);
 puts("Generate <topicfile> with trec2query <trectopicfile>");
 puts("-8 compress the postings using simple 8b");
 puts("-c compress the postings using Variable Byte Encoding (default)");
@@ -134,6 +136,7 @@ puts("-s 'static' do not compress the postings");
 puts("-q compress the postings using QMX-D1 (QMX + 'regular' d-gaps)");
 puts("-Q compress the postings using QMX-D4 (QMX + 'D4 d-gaps)");
 puts("-R compress the postings using QMX-D0 (QMX  without d-gaps)");
+puts("-E 'compress' the postings using EliasFano encoding");
 puts("-SSE SSE algn postings lists (this is the default for QMX based schemes)");
 
 return 1;
@@ -167,6 +170,7 @@ if (remember_into >= remember_buffer + remember_buffer_size)
 */
 ANT_compress_qmx QMX;
 ANT_compress_qmx_d4 QMX_D4;
+ANT_compress_elias_fano EF;
 
 uint8_t *remember_compress(uint32_t *length, uint32_t *padded_length, uint32_t *integers_in_quantum)
 {
@@ -185,7 +189,12 @@ if (!remember_should_compress)
 	}
 else
 	{
-	if (file_mode == 'Q' || file_mode == 'R')
+	/*
+		We don't need to diff, but we do need to zero the compression buffer
+	*/
+	if (file_mode == 'E')
+		memset(remember_compressed, 0, remember_compressed_buffer_size);
+	else if (file_mode == 'Q' || file_mode == 'R')
 		{
 		/*
 			We don't need to compute deltas because the scheme does it for us.
@@ -206,6 +215,12 @@ else
 		}
 
 	/*
+		Initialise Elias-Fano with the appropriate settings.
+	*/
+	if (file_mode == 'E')
+		((ANT_compress_elias_fano *)compressor)->reset(remember_buffer[*integers_in_quantum - 1], *integers_in_quantum);
+
+	/*
 		Now compress
 	*/
 	compressed_size = compressor->compress(remember_compressed, remember_compressed_buffer_size, remember_buffer, remember_into - remember_buffer);
@@ -218,11 +233,13 @@ else
 								QMX.decodeArray((uint32_t *)remember_compressed, compressed_size, decompress_buffer, remember_into - remember_buffer);
 							else if (file_mode == 'Q')
 								QMX_D4.decodeArray((uint32_t *)remember_compressed, compressed_size, decompress_buffer, remember_into - remember_buffer);
+							else if (file_mode == 'E')
+								compressor->decompress(decompress_buffer, remember_compressed + sizeof(uint32_t), remember_into - remember_buffer);
 							else
 								compressor->decompress(decompress_buffer, remember_compressed, remember_into - remember_buffer);
 							for (uint32_t ch = 0; ch < remember_into - remember_buffer; ch++)
 								if (decompress_buffer[ch] != remember_buffer[ch])
-									exit(printf("Decompressed doesn't match compressed at position %u\n", ch));
+									exit(printf("Decompressed doesn't match compressed at position %u (got %u, expected %u)\n", ch, decompress_buffer[ch], remember_buffer[ch]));
 							/*
 							*/
 #endif
@@ -367,6 +384,12 @@ for (parameter = 2; parameter < argc; parameter++)
 		file_mode = 'c';
 		remember_should_compress = true;
 		compressor = new ANT_compress_variable_byte;
+		}
+	else if (strcmp(argv[parameter], "-E") == 0)
+		{
+		file_mode = 'E';
+		remember_should_compress = true;
+		compressor = new ANT_compress_elias_fano;
 		}
 	else if (strcmp(argv[parameter], "-SSE") == 0)
 		sse_alignment = 16;

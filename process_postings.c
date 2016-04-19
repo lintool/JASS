@@ -127,6 +127,24 @@ while (current < finish)
 }
 
 /*
+	CIT_PROCESS_LIST_COMPRESSED_ELIAS_FANO()
+	----------------------------------------
+*/
+ANT_compress_elias_fano elias_fano_decoder;
+void CIt_process_list_compressed_elias_fano(uint8_t *source, uint8_t *end, uint16_t impact, uint32_t integers)
+{
+uint32_t ubound = *(uint32_t *)source;
+
+elias_fano_decoder.reset(ubound, integers);
+
+source += sizeof(ubound);
+elias_fano_decoder.set_block(source);
+
+for (long long i = 0; i < integers; i++)
+	add_rsv(elias_fano_decoder.next(source), impact);
+}
+
+/*
 	CIT_PROCESS_LIST_COMPRESSED_SIMPLE8B_ATIRE()
 	--------------------------------------------
 */

@@ -371,6 +371,9 @@ int main(int argc, char *argv[]) {
       exit(printf("Cannot interleave QMX\n"));
     }
     process_postings_list = CIt_process_list_compressed_qmx_d0;
+  } else if (*postings == 'E') {
+    puts("EliasFano Encoded Index");
+	process_postings_list = CIt_process_list_compressed_elias_fano;
   } else {
     exit(printf("This index appears to be invalid as it is neither compressed nor not compressed!\n"));
   }
