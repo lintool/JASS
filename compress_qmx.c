@@ -515,6 +515,7 @@ return max(max(a, b), max(c, d));
 */
 void ANT_compress_qmx::encodeArray(const uint32_t *source, uint64_t source_integers, uint32_t *into, uint64_t *nvalue)
 {
+const uint32_t WASTAGE = 512;
 uint8_t *current_length, *destination = (uint8_t *)into, *keys;
 uint32_t *current, run_length, bits, new_needed, wastage;
 uint32_t block, largest;
@@ -525,7 +526,7 @@ uint32_t block, largest;
 if (length_buffer_length < source_integers)
 	{
 	delete [] length_buffer;
-	length_buffer = new uint8_t [(size_t)(length_buffer_length = source_integers)];
+	length_buffer = new uint8_t [(size_t)(length_buffer_length = source_integers) + WASTAGE];
 	}
 
 /*
@@ -534,6 +535,12 @@ if (length_buffer_length < source_integers)
 current_length = length_buffer;
 for (current = (uint32_t *)source; current < source + source_integers; current++)
 	*current_length++ = bits_needed_for(*current);
+
+/*
+	Shove a bunch of 0 length integers on the end to allow for overflow
+*/
+for (wastage = 0; wastage < WASTAGE; wastage++)
+	*current_length++ = 0;
 
 /*
 	Process the lengths.  To maximise SSE throughput we need each write to be 128-bit (4*32-bit) alignned
