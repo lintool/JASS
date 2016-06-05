@@ -371,6 +371,12 @@ int main(int argc, char *argv[]) {
       exit(printf("Cannot interleave QMX\n"));
     }
     process_postings_list = CIt_process_list_compressed_qmx_d0;
+  } else if (*postings == 'O') {
+    puts("OptPFOR Compressed Index");
+    if (!decompress_then_process) {
+      exit(printf("Cannot interleave OptPFOR(?)\n"));
+    }
+    process_postings_list = CIt_process_list_compressed_optpfor;
   } else {
     exit(printf("This index appears to be invalid as it is neither compressed nor not compressed!\n"));
   }

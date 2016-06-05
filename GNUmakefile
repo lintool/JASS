@@ -50,6 +50,15 @@ ATIRE_OBJ = \
 	$(ATIRE_DIR)/obj/compress_text_deflate.o		\
 	$(ATIRE_DIR)/obj/compress_text_bz2.o
 
+PFOR_DIR = ./FastPFor
+PFOR_OBJ = \
+	$(PFOR_DIR)/bitpacking.o \
+	$(PFOR_DIR)/bitpackingaligned.o \
+	$(PFOR_DIR)/bitpackingunaligned.o \
+	$(PFOR_DIR)/simdbitpacking.o \
+	$(PFOR_DIR)/simdunalignedbitpacking.o \
+	$(PFOR_DIR)/varintdecode.o
+
 ATIRE_LIBS = \
 	$(ATIRE_DIR)/external/unencumbered/snappy/libsnappy.a							\
 	$(ATIRE_DIR)/external/unencumbered/zlib/libz.a 					\
@@ -70,15 +79,15 @@ MINUS_D += -DNOMINMAX
 MINUS_D += -DIMPACT_HEADER
 MINUS_D += -DFILENAME_INDEX
 
-CI_FLAGS = -x c++ -DCI_FORCEINLINE -msse4 -std=c++11 -O3 -I$(ATIRE_DIR)/source $(MINUS_D)
+CI_FLAGS = -x c++ -DCI_FORCEINLINE -msse4 -std=c++11 -O3 -I$(ATIRE_DIR)/source $(MINUS_D) -I./FastPFor/headers
 
 all : atire_to_jass_index jass
 
 jass : jass.c CI.c compress_qmx.c maths.c compress_qmx_d4.c process_postings.c
-	g++ $(CI_FLAGS) jass.c CI.c compress_simple8b.c compress_qmx.c compress_qmx_d4.c maths.c process_postings.c -o jass
+	g++ $(PFOR_OBJ) $(CI_FLAGS) jass.c CI.c compress_simple8b.c compress_qmx.c compress_qmx_d4.c  maths.c process_postings.c -o jass
 
 atire_to_jass_index : atire_to_jass_index.c
-	g++ $(ATIRE_OBJ) $(ATIRE_LIBS) $(CI_FLAGS) atire_to_jass_index.c compress_variable_byte.c compress_simple8b.c compress_qmx.c compress_qmx_d4.c maths.c -o atire_to_jass_index
+	g++ $(ATIRE_OBJ) $(PFOR_OBJ) $(ATIRE_LIBS) $(CI_FLAGS) atire_to_jass_index.c compress_variable_byte.c compress_simple8b.c compress_qmx.c compress_qmx_d4.c  maths.c -o atire_to_jass_index
 
 clean:
 	-rm atire_to_jass_index jass *.o CIvocab.c CIpostings.h CIpostings.c CIdoclist.c CIvocab_heap.c CIpostings.bin CIdoclist.bin CIvocab.bin CIvocab_terms.bin

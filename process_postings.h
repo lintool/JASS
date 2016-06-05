@@ -13,6 +13,7 @@ void CIt_process_list_not_compressed(uint8_t *doclist, uint8_t *end, uint16_t im
 void CIt_process_list_compressed_qmx(uint8_t *source, uint8_t *end, uint16_t impact, uint32_t integers);
 void CIt_process_list_compressed_qmx_d4(uint8_t *source, uint8_t *end, uint16_t impact, uint32_t integers);
 void CIt_process_list_compressed_qmx_d0(uint8_t *source, uint8_t *end, uint16_t impact, uint32_t integers);
+void CIt_process_list_compressed_optpfor(uint8_t *source, uint8_t *end, uint16_t impact, uint32_t integers);
 void CIt_process_list_compressed_simple8b_ATIRE(uint8_t *source, uint8_t *end, uint16_t impact, uint32_t integers);
 void CIt_process_list_compressed_simple8b(uint8_t *source, uint8_t *end, uint16_t impact, uint32_t integers);
 

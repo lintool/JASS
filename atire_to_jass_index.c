@@ -21,6 +21,12 @@
 #include "compress_qmx.h"
 #include "compress_qmx_d4.h"
 
+// lemire's stuff 
+#include "codecs.h"
+#include "codecfactory.h"
+#include "bitpacking.h"
+#include "simdfastpfor.h"
+
 #ifndef IMPACT_HEADER
 	#error "set IMPACT_HEADER in the ATIRE makefile and start all over again"
 #endif
@@ -126,7 +132,7 @@ qsort(termlist, termlist_length, sizeof(*termlist), string_compare);
 */
 uint8_t usage(char *filename)
 {
-printf("Usage: %s <index.aspt> [<topicfile>] [-c|-s|-q|-Q] [-SSE]", filename);
+printf("Usage: %s <index.aspt> [<topicfile>] [-c|-s|-q|-Q|-O] [-SSE]", filename);
 puts("Generate <topicfile> with trec2query <trectopicfile>");
 puts("-8 compress the postings using simple 8b");
 puts("-c compress the postings using Variable Byte Encoding (default)");
@@ -134,6 +140,7 @@ puts("-s 'static' do not compress the postings");
 puts("-q compress the postings using QMX-D1 (QMX + 'regular' d-gaps)");
 puts("-Q compress the postings using QMX-D4 (QMX + 'D4 d-gaps)");
 puts("-R compress the postings using QMX-D0 (QMX  without d-gaps)");
+puts("-O compress the postings using OptPForDelta");
 puts("-SSE SSE algn postings lists (this is the default for QMX based schemes)");
 
 return 1;
@@ -167,6 +174,8 @@ if (remember_into >= remember_buffer + remember_buffer_size)
 */
 ANT_compress_qmx QMX;
 ANT_compress_qmx_d4 QMX_D4;
+
+FastPForLib::OPTPFor<128/32,FastPForLib::Simple16<false>> PFOR;
 
 uint8_t *remember_compress(uint32_t *length, uint32_t *padded_length, uint32_t *integers_in_quantum)
 {
@@ -208,7 +217,20 @@ else
 	/*
 		Now compress
 	*/
-	compressed_size = compressor->compress(remember_compressed, remember_compressed_buffer_size, remember_buffer, remember_into - remember_buffer);
+	size_t answer = remember_compressed_buffer_size;
+	size_t PFORcompressed;
+	size_t PFORencoded = (remember_into - remember_buffer) - ((remember_into - remember_buffer) % 128);
+	uint64_t VBYTEencoded = (remember_into - remember_buffer) % 128;
+
+	if (file_mode == 'O') {
+		PFOR.encodeArray(remember_buffer, PFORencoded, (uint32_t *)remember_compressed, answer);
+		// For PFOR stuff, we want the number of uint32_t's, for VByte we wnt the number of bytes
+		PFORcompressed = answer;
+		compressed_size = sizeof(uint32_t) * answer;
+		compressed_size += compressor->compress(remember_compressed + compressed_size, remember_compressed_buffer_size - compressed_size, remember_buffer + PFORencoded, VBYTEencoded);
+	} else {
+		compressed_size = compressor->compress(remember_compressed, remember_compressed_buffer_size, remember_buffer, remember_into - remember_buffer);
+	}
 
 #ifdef NEVER
 							/*
@@ -218,13 +240,17 @@ else
 								QMX.decodeArray((uint32_t *)remember_compressed, compressed_size, decompress_buffer, remember_into - remember_buffer);
 							else if (file_mode == 'Q')
 								QMX_D4.decodeArray((uint32_t *)remember_compressed, compressed_size, decompress_buffer, remember_into - remember_buffer);
+							else if (file_mode == 'O')
+								{
+								PFOR.decodeArray((uint32_t *)remember_compressed, PFORcompressed, decompress_buffer, PFORencoded);
+								compressor->decompress(decompress_buffer + PFORencoded, remember_compressed + (sizeof(uint32_t) * PFORcompressed), VBYTEencoded);
+								}
 							else
 								compressor->decompress(decompress_buffer, remember_compressed, remember_into - remember_buffer);
 							for (uint32_t ch = 0; ch < remember_into - remember_buffer; ch++)
 								if (decompress_buffer[ch] != remember_buffer[ch])
-									exit(printf("Decompressed doesn't match compressed at position %u\n", ch));
-							/*
-							*/
+									exit(printf("Decompressed doesn't match compressed at position %u [got %u, expected %u]\n", ch, decompress_buffer[ch], remember_buffer[ch]));
+
 #endif
 
 	if (compressed_size <= 0)
@@ -367,6 +393,12 @@ for (parameter = 2; parameter < argc; parameter++)
 		file_mode = 'c';
 		remember_should_compress = true;
 		compressor = new ANT_compress_variable_byte;
+		}
+	else if (strcmp(argv[parameter], "-O") == 0)
+		{
+		file_mode = 'O';
+		remember_should_compress = true;
+		sse_alignment = 16;
 		}
 	else if (strcmp(argv[parameter], "-SSE") == 0)
 		sse_alignment = 16;

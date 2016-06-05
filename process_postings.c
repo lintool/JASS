@@ -1,5 +1,11 @@
 #include "process_postings.h"
 
+// lemire's stuff 
+#include "codecs.h"
+#include "codecfactory.h"
+#include "bitpacking.h"
+#include "simdfastpfor.h"
+
 #define ALIGN_16 __attribute__ ((aligned (16)))
 ALIGN_16 uint32_t *CI_decompressed_postings;
 ALIGN_16 uint8_t *postings;					// the postings themselves
@@ -124,6 +130,40 @@ current = CI_decompressed_postings;
 finish = current + integers;
 while (current < finish)
 	add_rsv(*current++, impact);
+}
+
+/*
+	CIT_PROCESS_LIST_COMPRESSED_OPTPFOR()
+	-------------------------------------
+*/
+FastPForLib::OPTPFor<128/32,FastPForLib::Simple16<false>> PFOR;
+void CIt_process_list_compressed_optpfor(uint8_t *source, uint8_t *end, uint16_t impact, uint32_t integers)
+{
+uint32_t sum, *finish, *current;
+size_t pfor_integers = integers - (integers % 128);
+auto destination = CI_decompressed_postings + pfor_integers;
+
+source = (uint8_t *)PFOR.decodeArray((uint32_t *)source, end - source, CI_decompressed_postings, pfor_integers);
+while (source < end)
+	if (*source & 0x80)
+		*destination++ = *source++ & 0x7F;
+	else
+		{
+		*destination = *source++;
+		while (!(*source & 0x80))
+		   *destination = (*destination << 7) | *source++;
+		*destination = (*destination << 7) | (*source++ & 0x7F);
+		destination++;
+		}
+
+current = CI_decompressed_postings;
+finish = current + integers;
+sum = 0;
+while (current < finish)
+	{
+	sum += *current++;
+	add_rsv(sum, impact);
+	}
 }
 
 /*
