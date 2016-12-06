@@ -440,6 +440,13 @@ int main(int argc, char *argv[]) {
     rewind(out);				// the TREC run file
 
     while (fgets(buffer, sizeof(buffer), fp) != NULL) {
+      // allow for k on a per query basis by deleting and recreating the heap
+      if (*buffer == '.') {
+        delete CI_heap;
+        CI_top_k = atoll(buffer + 1) + 1;
+        CI_heap = new ANT_heap<uint16_t *, add_rsv_compare>(*CI_accumulator_pointers, CI_top_k);
+        continue;
+      }
       full_query_without_io_timer = chrono::steady_clock::now();
       if ((id = strtok(buffer, SEPERATORS)) == NULL) {
         continue;
