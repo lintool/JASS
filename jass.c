@@ -3,10 +3,11 @@
 // #define TIME_EACH_QUERY_PHASE 1
 
 #include <chrono>
-#include <inttypes.h>
-#include <stdint.h>
+#include <cinttypes>
+#include <cstdint>
 #include <stdio.h>
 #include <stdlib.h>
+#include <cmath>
 
 #ifdef _MSC_VER
 #include <intrin.h>
@@ -65,6 +66,7 @@ uint32_t CI_unique_documents;
 
 #include <iostream>
 #include <string>
+#include <unordered_set>
 #include <unordered_map>
 #include <vector>
 
@@ -84,43 +86,49 @@ void print_os_time(void) {
 	}
 #endif
 }
+uint16_t **tmp_CI_accumulator_pointers;
 
 double med_rbp(std::vector<std::string> &gold_standard, unsigned long result_len) {
 	// minus 1 because we added one for the heap
-	size_t max_depth = std::min(gold_standard.size(), result_len);
+	size_t max_depth = std::min(gold_standard.size(), (uint64_t) 1000);
 	double rbp_max = 0.0;
+  size_t psuedo_rank = 0;
 
-	// For convenience, load our filter into a hashtable: doc_id -> rank
-	std::unordered_map<std::string, uint64_t> filter_doc_and_rank;
+	// For convenience, load our filter into a set: doc_ids
+	std::unordered_set<std::string> filter_docs;
 	for (size_t i = 0; i < CI_results_list_length; ++i) {
-		uint64_t j = CI_accumulator_pointers[i] - CI_accumulators;
-		filter_doc_and_rank[CI_documentlist[j]] = i;
+		uint64_t j = tmp_CI_accumulator_pointers[i] - CI_accumulators;
+		filter_docs.insert(CI_documentlist[j]);
 	}
-
 	// Iterate the docs in the Gold Std up to our max depth
 	for (size_t i = 0; i < max_depth; ++i) {
 
 		// Check if the current doc is in the filter
-		auto filter_doc = filter_doc_and_rank.find(gold_standard[i]);
-
+		auto f_doc = filter_docs.find(gold_standard[i]);
 		// Our Gold Std Doc is not in the filter list... Effectiveness will be lost!
-		if (filter_doc == filter_doc_and_rank.end()) {
+		if (f_doc == filter_docs.end()) {
 			rbp_max += std::pow(PSI, i);
 		}
 
 		// Our Gold Std Doc is inside the filter list, and our gold doc has a
 		// higher ranking than the corresponding document in the filter list.
-		else if (i < filter_doc->second) {
+		// This filter list rank is a 'psuedo' rank based on a perfect ordering w.r.t
+		// the gold standard list.
+		else if (i < psuedo_rank) {
 			// If this occurs within the working range, we compute this loss
-			if (filter_doc->second < max_depth) {
-				rbp_max += std::pow(PSI, i) - std::pow(PSI, filter_doc->second);
+			if (psuedo_rank < max_depth) {
+				rbp_max += (std::pow(PSI, i) - std::pow(PSI, psuedo_rank));
 			}
 			// Otherwise, the filter doc is useless as it's outside the working range
 			// and therefore recieves maximum penalty.
 			else {
 				rbp_max += std::pow(PSI, i);
 			}
+      ++psuedo_rank; //Since our filter doc 'appeared', we must increase our p-rank
 		}
+    else {
+      ++psuedo_rank; //See above -- our filter doc was used.
+    }
 	}
 	rbp_max += std::pow(PSI, max_depth) / (1 - PSI);
 	// Return the MED value
@@ -130,6 +138,11 @@ double med_rbp(std::vector<std::string> &gold_standard, unsigned long result_len
 std::unordered_map<uint64_t, std::vector<std::string>> gold_std;
 
 void dump_rho_med(uint32_t topic_id, uint32_t sorted_retrieved, uint32_t postings, uint64_t ns) {
+  
+  // Hack to stop strange behaviour...
+  memcpy(tmp_CI_accumulator_pointers, CI_accumulator_pointers, sizeof(uint16_t *) * CI_results_list_length);
+ 	top_k_qsort(tmp_CI_accumulator_pointers, CI_results_list_length, CI_top_k - 1);
+
 	double med = med_rbp(gold_std[topic_id], sorted_retrieved);
 
 	// topic,k,ns,med_rbp_0.95,postings_processed
@@ -400,8 +413,7 @@ int main(int argc, char *argv[]) {
 	long double score = 0;
 	// topic F2 doc_str rank score run
 	uint32_t last_topic = 0;
-	while (fscanf(gs, "%" SCNu32 "%s %s %" SCNu32 "%Lf %s\n", &docid, F2, d_str, &rank, &score,
-	              gid) == 6) {
+	while (fscanf(gs, "%" SCNu32 "%s %s %" SCNu32 "%Lf %s\n", &docid, F2, d_str, &rank, &score, gid) == 6) {
 		gold_std[docid].emplace_back(d_str);
 	}
 	puts(" done.");
@@ -475,7 +487,8 @@ int main(int argc, char *argv[]) {
 	 */
 	CI_accumulators = new uint16_t[accumulators_needed];
 	CI_accumulator_pointers = new uint16_t *[accumulators_needed];
-
+  tmp_CI_accumulator_pointers = new uint16_t *[accumulators_needed];
+  
 	/*
 	 For QaaT early termination we need K+1 elements in the heap so that we can check that
 	 nothing else can get into the top-k.
@@ -630,7 +643,8 @@ int main(int argc, char *argv[]) {
 				       (long long)current_header->quantum_frequency, stats_tmp);
 #endif
 				start_timer = chrono::steady_clock::now();
-				top_k_qsort(CI_accumulator_pointers, CI_results_list_length, CI_top_k - 1);
+				//top_k_qsort(CI_accumulator_pointers, CI_results_list_length, CI_top_k - 1);
+
 				dump_rho_med(
 				    query_id, std::min(CI_results_list_length, CI_top_k - 1), postings_processed,
 				    (start_timer - full_query_without_io_timer).count() - dumping_med.count());
