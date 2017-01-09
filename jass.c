@@ -4,10 +4,10 @@
 
 #include <chrono>
 #include <cinttypes>
-#include <cstdint>
-#include <stdio.h>
-#include <stdlib.h>
 #include <cmath>
+#include <cstdint>
+#include <cstdlib>
+#include <stdio.h>
 
 #ifdef _MSC_VER
 #include <intrin.h>
@@ -66,8 +66,8 @@ uint32_t CI_unique_documents;
 
 #include <iostream>
 #include <string>
-#include <unordered_set>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 #ifdef _MSC_VER
@@ -90,9 +90,9 @@ uint16_t **tmp_CI_accumulator_pointers;
 
 double med_rbp(std::vector<std::string> &gold_standard, unsigned long result_len) {
 	// minus 1 because we added one for the heap
-	size_t max_depth = std::min(gold_standard.size(), (uint64_t) 1000);
+	size_t max_depth = std::min(gold_standard.size(), (unsigned long)1000);
 	double rbp_max = 0.0;
-  size_t psuedo_rank = 0;
+	size_t psuedo_rank = 0;
 
 	// For convenience, load our filter into a set: doc_ids
 	std::unordered_set<std::string> filter_docs;
@@ -124,11 +124,10 @@ double med_rbp(std::vector<std::string> &gold_standard, unsigned long result_len
 			else {
 				rbp_max += std::pow(PSI, i);
 			}
-      ++psuedo_rank; //Since our filter doc 'appeared', we must increase our p-rank
+			++psuedo_rank; // Since our filter doc 'appeared', we must increase our p-rank
+		} else {
+			++psuedo_rank; // See above -- our filter doc was used.
 		}
-    else {
-      ++psuedo_rank; //See above -- our filter doc was used.
-    }
 	}
 	rbp_max += std::pow(PSI, max_depth) / (1 - PSI);
 	// Return the MED value
@@ -138,10 +137,11 @@ double med_rbp(std::vector<std::string> &gold_standard, unsigned long result_len
 std::unordered_map<uint64_t, std::vector<std::string>> gold_std;
 
 void dump_rho_med(uint32_t topic_id, uint32_t sorted_retrieved, uint32_t postings, uint64_t ns) {
-  
-  // Hack to stop strange behaviour...
-  memcpy(tmp_CI_accumulator_pointers, CI_accumulator_pointers, sizeof(uint16_t *) * CI_results_list_length);
- 	top_k_qsort(tmp_CI_accumulator_pointers, CI_results_list_length, CI_top_k - 1);
+
+	// Hack to stop strange behaviour...
+	memcpy(tmp_CI_accumulator_pointers, CI_accumulator_pointers,
+	       sizeof(uint16_t *) * CI_results_list_length);
+	top_k_qsort(tmp_CI_accumulator_pointers, CI_results_list_length, CI_top_k - 1);
 
 	double med = med_rbp(gold_std[topic_id], sorted_retrieved);
 
@@ -413,7 +413,8 @@ int main(int argc, char *argv[]) {
 	long double score = 0;
 	// topic F2 doc_str rank score run
 	uint32_t last_topic = 0;
-	while (fscanf(gs, "%" SCNu32 "%s %s %" SCNu32 "%Lf %s\n", &docid, F2, d_str, &rank, &score, gid) == 6) {
+	while (fscanf(gs, "%" SCNu32 "%s %s %" SCNu32 "%Lf %s\n", &docid, F2, d_str, &rank, &score,
+	              gid) == 6) {
 		gold_std[docid].emplace_back(d_str);
 	}
 	puts(" done.");
@@ -487,8 +488,8 @@ int main(int argc, char *argv[]) {
 	 */
 	CI_accumulators = new uint16_t[accumulators_needed];
 	CI_accumulator_pointers = new uint16_t *[accumulators_needed];
-  tmp_CI_accumulator_pointers = new uint16_t *[accumulators_needed];
-  
+	tmp_CI_accumulator_pointers = new uint16_t *[accumulators_needed];
+
 	/*
 	 For QaaT early termination we need K+1 elements in the heap so that we can check that
 	 nothing else can get into the top-k.
@@ -535,7 +536,11 @@ int main(int argc, char *argv[]) {
 			// allow for k on a per query basis by deleting and recreating the heap
 			if (*buffer == '.') {
 				delete CI_heap;
-				CI_top_k = atoll(buffer + 1) + 1;
+				char *end;
+				CI_top_k = strtoll(buffer + 1, &end, 10) + 1;
+				if (*end == '.') {
+					postings_to_process = strtoll(end + 1, &end, 10);
+				}
 				CI_heap =
 				    new ANT_heap<uint16_t *, add_rsv_compare>(*CI_accumulator_pointers, CI_top_k);
 				continue;
@@ -642,14 +647,6 @@ int main(int argc, char *argv[]) {
 				printf("I:%lld L:%lld T:%lld\n", (long long)current_header->impact,
 				       (long long)current_header->quantum_frequency, stats_tmp);
 #endif
-				start_timer = chrono::steady_clock::now();
-				//top_k_qsort(CI_accumulator_pointers, CI_results_list_length, CI_top_k - 1);
-
-				dump_rho_med(
-				    query_id, std::min(CI_results_list_length, CI_top_k - 1), postings_processed,
-				    (start_timer - full_query_without_io_timer).count() - dumping_med.count());
-				end_timer = chrono::steady_clock::now();
-				dumping_med += chrono::duration_cast<chrono::nanoseconds>(end_timer - start_timer);
 			}
 
 // Sort the accumulator pointers to put the highest RSV document at the top of the list.
@@ -670,9 +667,9 @@ int main(int argc, char *argv[]) {
 			 and *CI_accumulator_pointers[0] is the rsv.
 			 */
 			end_timer = chrono::steady_clock::now();
-			stats_tmp = chrono::duration_cast<chrono::nanoseconds>(end_timer -
-			                                                       full_query_without_io_timer) -
-			            dumping_med;
+			stats_tmp =
+			    chrono::duration_cast<chrono::nanoseconds>(end_timer - full_query_without_io_timer);
+			/* dumping_med; */
 			stats_total_time_to_search_without_io += stats_tmp;
 
 #ifdef PRINT_PER_QUERY_STATS
@@ -680,6 +677,8 @@ int main(int argc, char *argv[]) {
 			queries_num_postings[total_number_of_topics - 1] = postings_processed;
 			queries_latency[total_number_of_topics - 1] = stats_tmp.count();
 #endif
+			dump_rho_med(query_id, std::min(CI_results_list_length, CI_top_k - 1),
+			             postings_processed, stats_tmp.count());
 
 			// Dump TREC output
 			trec_dump_results(query_id, out, CI_top_k - 1); // Subtract 1 from top_k because we
